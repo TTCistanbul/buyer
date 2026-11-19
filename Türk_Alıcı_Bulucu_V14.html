@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Türk Alıcı Bulucu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- SheetJS 0.20.3 (fixes CVE-2023-30533 in 0.18.5); falls back to the old CDN copy only if the new one cannot load -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" onerror="var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';document.head.appendChild(s);window.XLSX_OLD=true;"></script>
+<style>
+:root{
+  /* Layout: two working tabs, input on top, results table below, summary chips first */
+  --ink:#1b2440; --muted:#5d6580; --line:#d9dce6; --bg:#f6f7fa; --panel:#ffffff;
+  --accent:#c8102e; --accent-ink:#ffffff; --soft:#eef0f6;
+  --high:#1f7a4d; --high-bg:#e3f3ea; --mid:#1f5fa8; --mid-bg:#e4eefb; --norm:#8a5a00; --norm-bg:#fbf0d9;
+  --imp:#5b3fb0; --imp-bg:#efeafd; --chk:#6b6f7c; --chk-bg:#eceef2; --exc:#a12a2a; --exc-bg:#fbe7e7;
+  --display:"IBM Plex Sans",system-ui,sans-serif; --body:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ink:#e7e9f2; --muted:#a3a9bf; --line:#343a50; --bg:#13172a; --panel:#1b2036; --soft:#232a45;
+    --accent:#ff5468; --accent-ink:#1b0006;
+    --high:#7fd6a6; --high-bg:#173527; --mid:#8fbaf0; --mid-bg:#182c4a; --norm:#f0c46e; --norm-bg:#3a2d10;
+    --imp:#c2b1ff; --imp-bg:#2b2350; --chk:#b6bac7; --chk-bg:#2a2f40; --exc:#ff9a9a; --exc-bg:#401b1f;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ink:#e7e9f2; --muted:#a3a9bf; --line:#343a50; --bg:#13172a; --panel:#1b2036; --soft:#232a45;
+  --accent:#ff5468; --accent-ink:#1b0006;
+  --high:#7fd6a6; --high-bg:#173527; --mid:#8fbaf0; --mid-bg:#182c4a; --norm:#f0c46e; --norm-bg:#3a2d10;
+  --imp:#c2b1ff; --imp-bg:#2b2350; --chk:#b6bac7; --chk-bg:#2a2f40; --exc:#ff9a9a; --exc-bg:#401b1f;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--body)}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 20px 60px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:14px}
+h1{font:700 26px/1.2 var(--display);margin:0;text-wrap:balance}
+html[data-lang="tr"] [data-l="en"],html[data-lang="en"] [data-l="tr"]{display:none!important}
+.langsw{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin:6px auto 0}
+.langsw button{border:0;border-radius:0;padding:4px 14px;font:600 12px var(--body);background:var(--panel);color:var(--muted);cursor:pointer}
+.langsw button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.dl{border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-top:12px;display:grid;gap:8px;min-width:0}
+.dl legend{font-weight:700;padding:0 6px}
+.lbox{border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.lbox>summary{cursor:pointer}
+h1 small{display:block;font-weight:500;font-size:15px;color:var(--muted)}
+.org{font:500 12px var(--mono);color:var(--muted);text-align:right}
+.tabs{display:flex;gap:6px;margin:20px 0 0;flex-wrap:wrap}
+.tab{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:10px 16px;border-radius:8px 8px 0 0;font:600 14px var(--body);cursor:pointer}
+.tab[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.tab span{display:block;font-weight:400;font-size:12px;opacity:.8}
+@media (max-width:560px){.tab span{display:none}.tab{padding:9px 10px;font-size:13px}.tabs{flex-wrap:nowrap}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:0 8px 8px 8px;padding:20px;display:grid;gap:16px}
+/* Keep wide tables and long text inside the panel: grid items may shrink below their content, the table scrolls instead */
+.panel{grid-template-columns:minmax(0,1fr)}
+.panel>*,.row>*,.colmap>*{min-width:0}
+.status,.hint,.notice{overflow-wrap:anywhere}
+td{max-width:360px;overflow-wrap:break-word}
+.tbl th,.tbl td{min-width:110px}
+.tbl th:first-child,.tbl td:first-child{min-width:0}
+.cl{max-height:6.6em;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical}
+.tbl{max-width:100%}
+.steps{display:flex;flex-wrap:wrap;gap:8px;font:500 12px var(--mono);color:var(--muted)}
+.steps b{color:var(--accent)}
+label{font-weight:600;font-size:14px;display:block;margin-bottom:4px}
+label .en{font-weight:400;color:var(--muted)}
+input[type=text],textarea,select{width:100%;font:14px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 10px}
+textarea{min-height:170px;font-family:var(--mono);font-size:13px;resize:vertical}
+input:focus-visible,textarea:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:600 14px var(--body);border-radius:6px;padding:9px 16px;cursor:pointer;border:1px solid var(--ink);background:var(--panel);color:var(--ink)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.hint{font-size:13px;color:var(--muted);margin:0}
+.notice{background:var(--soft);border-left:4px solid var(--accent);padding:10px 12px;font-size:13px;border-radius:4px}
+.status{font:500 13px var(--mono);color:var(--muted);min-height:20px}
+.bar{height:6px;background:var(--soft);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+h2{font:700 18px var(--display);margin:8px 0 6px}
+h2 small{font-weight:400;color:var(--muted);font-size:14px}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;vertical-align:top;padding:7px 9px;border-bottom:1px solid var(--line)}
+th{background:var(--soft);font-weight:600;position:sticky;top:0}
+td.num{font-variant-numeric:tabular-nums;text-align:right}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font:600 12px var(--body);white-space:nowrap}
+.p-HIGH{background:var(--high-bg);color:var(--high)} .p-MEDIUM{background:var(--mid-bg);color:var(--mid)}
+.p-NORMAL{background:var(--norm-bg);color:var(--norm)} .p-IMPORTER{background:var(--imp-bg);color:var(--imp)}
+.p-CHECK{background:var(--chk-bg);color:var(--chk)} .p-EXCLUDE{background:var(--exc-bg);color:var(--exc)}
+.p-MAKER{background:var(--mid-bg);color:var(--imp)} .p-PARTNER{background:var(--soft);color:var(--ink);border:1px solid var(--line)}
+.o-scan{background:var(--chk-bg);color:var(--chk)} .o-manual{background:var(--high-bg);color:var(--high)}
+.ver{font:500 11px var(--mono);color:var(--muted);margin-left:6px}
+tr.hid td{opacity:.5}
+.stbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.stbar button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);cursor:pointer;text-align:left;font:600 12.5px var(--body);min-width:0}
+.stbar button b{font-size:24px;line-height:1.1}
+.stbar button[aria-pressed="true"]{outline:2px solid var(--ink);outline-offset:1px}
+.st-NEW{--c:#5F5E5A;--bgc:#F1EFE8;--bd:#F1EFE8;--bar:#D3D1C7} .st-INVITED{--c:#0C447C;--bgc:#F3F8FD;--bd:#B5D4F4;--bar:#B5D4F4} .st-REPLIED{--c:#042C53;--bgc:#85B7EB;--bd:#85B7EB;--bar:#378ADD} .st-REGISTERED{--c:#FFFFFF;--bgc:#0C447C;--bd:#0C447C;--bar:#0C447C} .st-DECLINED{--c:#888780;--bgc:#FFFFFF;--bd:#B4B2A9;--bar:#EDEBE4} .st-ALL{--c:var(--ink);--bgc:var(--panel);--bd:var(--line)}
+.stbar button,select.stsel{color:var(--c);background:var(--bgc);border:1px solid var(--bd)}
+.stbar button.st-DECLINED,select.stsel.st-DECLINED{border-style:dashed}
+.stbar .bar2{height:6px;border-radius:3px;background:#e5e7eb;overflow:hidden;display:flex;grid-column:1/-1}
+.stbar .bar2 i{display:block;height:100%;background:var(--bar)}
+select.stsel{padding:4px 6px;font-size:12.5px;border-radius:8px;min-width:150px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-width:110px;background:var(--bg)}
+.chip b{display:block;font:700 22px var(--display);font-variant-numeric:tabular-nums}
+.kw{font-family:var(--mono);font-size:12.5px}
+a{color:var(--mid)}
+a.srch{text-decoration:none;font-size:12px}
+.how{width:auto;display:inline-block;padding:0 4px;margin:0 2px;height:20px;font:600 11px var(--body);border-radius:999px;border:1px solid var(--line);vertical-align:1px;cursor:pointer}
+.how.guess{border-style:dashed;opacity:.75}
+.how[data-v="copy"],.h-copy{background:#e8f3ec;color:#1d6b3a}
+.how[data-v="ext"],.h-ext{background:#e7eefb;color:#1f4f9a}
+.how[data-v="ask"],.h-ask{background:#fdf2df;color:#8a5a00}
+.how[data-v="center"],.h-center{background:#f1e9f7;color:#6a3a8a}
+.how-t{display:inline-block;padding:2px 10px;border-radius:999px;font:600 12px var(--body)}
+.howgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.howgrid>div{border:1px solid var(--line);border-radius:10px;padding:10px;min-width:0}
+.howgrid p{margin:6px 0 0;font-size:13px;line-height:1.5}
+
+.unsure{color:var(--norm);font-size:12px;font-weight:600}
+[hidden]{display:none!important}
+.colmap{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.colmap label{font-size:12px}
+.ord{display:inline-flex;width:30px;height:30px;border-radius:50%;align-items:center;justify-content:center;background:var(--accent);color:var(--accent-ink);font-weight:700}
+input.cellin{min-width:120px;padding:5px 7px;font-size:13px;border-radius:8px}
+input.cellin.empty{background:var(--norm-bg);border-color:color-mix(in srgb,var(--norm) 40%,transparent)}
+.miss{display:inline-block;padding:1px 6px;border-radius:4px;background:var(--norm-bg);color:var(--norm);font-size:11px;font-weight:600}
+@media (prefers-reduced-motion: reduce){.bar i{transition:none}}
+
+/* ===== Theme C: step flow, green, light ===== */
+:root{--ink:#292524;--muted:#78716c;--line:#e7e5e4;--bg:#fafaf9;--panel:#ffffff;--soft:#f5f5f4;--accent:#15803d;--accent-ink:#ffffff}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--ink:#e7e5e4;--muted:#a8a29e;--line:#3f3a36;--bg:#1c1917;--panel:#26221f;--soft:#2e2a26;--accent:#4ade80;--accent-ink:#052e16}}
+.steps{display:none}
+.wrap{max-width:1000px}
+header{border-bottom:0;flex-direction:column;align-items:center;text-align:center;padding-bottom:0}
+header .org{text-align:center}
+.tabs{justify-content:center;gap:0;margin:28px 0 20px;flex-wrap:nowrap}
+.tab{background:none!important;border:0!important;color:var(--muted)!important;padding:0 28px;position:relative;font-size:13px;border-radius:0}
+.tab::before{content:attr(data-n);display:flex;align-items:center;justify-content:center;width:34px;height:34px;margin:0 auto 6px;border-radius:50%;border:2px solid var(--line);background:var(--panel);font-weight:700;color:var(--muted);position:relative;z-index:1}
+.tab[aria-selected="true"]{color:var(--ink)!important}
+.tab[aria-selected="true"]::before{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.tab:not(:last-child)::after{content:"";position:absolute;top:17px;left:calc(50% + 17px);width:calc(100% - 34px);height:2px;background:var(--line)}
+.tab span{display:none}
+.panel{border-radius:16px;padding:28px}
+fieldset{border-radius:12px!important}
+input[type=text],textarea,select{border-radius:10px;background:var(--panel)}
+button{border-radius:999px}
+.notice{background:color-mix(in srgb,var(--accent) 8%,var(--panel))}
+@media (max-width:560px){.tab{padding:0 6px;font-size:11px;max-width:25%}.tab::before{width:30px;height:30px}.tab:not(:last-child)::after{top:15px;left:calc(50% + 15px);width:calc(100% - 30px)}.panel{padding:18px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Türk Alıcı Bulucu<span class="ver">V14</span><small><span data-l="tr">Tayvan fuarları için Türk alıcı bulucu</span><span data-l="en">Turkish buyer finder for Taiwan trade shows</span></small></h1>
+  <div class="langsw" role="group" aria-label="Dil / Language"><button type="button" data-lang="tr" aria-pressed="true">TR</button><button type="button" data-lang="en" aria-pressed="false">EN</button></div>
+  <div class="org"><span data-l="tr">Tayvan Ticaret Merkezi · İstanbul</span><span data-l="en">Taiwan Trade Center Istanbul</span>
+    <div style="margin-top:6px"><label for="me" style="display:inline;font:500 12px var(--mono);color:var(--muted)"><span data-l="tr">Adın </span><span data-l="en">Your name </span></label><input type="text" id="me" placeholder="Adın" style="width:130px;padding:4px 6px"></div></div>
+</header>
+
+<div class="tabs" role="tablist">
+  <button class="tab" role="tab" id="tab-m" aria-selected="true" aria-controls="pm" data-n="1"><b class="tl" data-l="tr">Fuar eşleştirme</b><b class="tl" data-l="en">Taiwan ↔ Türkiye shows</b></button>
+  <button class="tab" role="tab" id="tab-a" aria-selected="false" aria-controls="pa" data-n="2"><b class="tl" data-l="tr">Fuarı incele</b><b class="tl" data-l="en">Show analysis</b></button>
+  <button class="tab" role="tab" id="tab-b" aria-selected="false" aria-controls="pb" data-n="3"><b class="tl" data-l="tr">Listeyi puanla</b><b class="tl" data-l="en">Grade an exhibitor list</b></button>
+</div>
+
+<!-- ========== A ========== -->
+<section class="panel" id="pa" role="tabpanel" aria-labelledby="tab-a" hidden>
+  <div class="row">
+    <div><label for="a-show"><span data-l="tr">Tayvan fuarı</span><span data-l="en">Taiwan show</span></label><select id="a-show"></select></div>
+    <div style="align-self:end"><button id="a-claude" type="button">✨ <span data-l="tr">Claude ile yeni fuar incele</span><span data-l="en">Analyse a show with Claude</span> ↗</button>
+      <p class="hint" style="margin:4px 0 0"><span data-l="tr">claude.ai sürümünü açar; Claude hesabı gerekir.</span><span data-l="en">Opens the claude.ai version; needs a Claude account.</span></p></div>
+  </div>
+  <div class="status" id="a-status" aria-live="polite"></div>
+  <div id="a-out" hidden>
+    <div class="tbl"><table id="a-rows"></table></div>
+    <div class="btns"><button id="a-xlsx"><span data-l="tr">Excel indir</span><span data-l="en">Download Excel</span></button><button id="a-copy"><span data-l="tr">Tabloyu kopyala</span><span data-l="en">Copy table</span></button></div>
+  </div>
+</section>
+
+
+
+<!-- ========== B ========== -->
+<section class="panel" id="pb" role="tabpanel" aria-labelledby="tab-b" hidden>
+  <div class="steps"><span><b>1</b> <span data-l="tr">Liste yükle, yapıştır veya tek tek ekle</span><span data-l="en">Upload or paste a list, or add one by one</span></span><span>→ <b>2</b> <span data-l="tr">Puanlanır</span><span data-l="en">Graded</span></span><span>→ <b>3</b> <span data-l="tr">Excel veya HubSpot CSV indir</span><span data-l="en">Download Excel or HubSpot CSV</span></span></div>
+  <div class="row">
+    <div><label for="b-show"><span data-l="tr">Hedef Tayvan fuarı</span><span data-l="en">Target Taiwan show</span></label><select id="b-show"></select></div>
+    <div><label for="b-src"><span data-l="tr">Liste kaynağı</span><span data-l="en">List source</span></label><input type="text" id="b-src" placeholder="örn. Motobike İstanbul 2026 katılımcı listesi" data-t-placeholder="örn. Motobike İstanbul 2026 katılımcı listesi|e.g. Motobike Istanbul 2026 exhibitor list"></div>
+  </div>
+  <div class="btns"><button id="b-file-btn">📄 <span data-l="tr">Excel / CSV dosyası seç</span><span data-l="en">Choose an Excel or CSV file</span></button><input type="file" id="b-file" accept=".xlsx,.xls,.csv,.tsv,.txt" hidden><span class="hint" id="b-file-name"></span>
+    <label for="b-sheet" class="hint" style="margin:0" hidden id="b-sheet-l"><span data-l="tr">Sayfa</span><span data-l="en">Sheet</span></label><select id="b-sheet" style="width:auto;padding:6px 8px" hidden></select></div>
+  <details id="b-tw">
+    <summary><b><span data-l="tr">Tayvan marka listesi</span><span data-l="en">Taiwanese brand list</span></b> — <span id="b-tw-n"></span></summary>
+    <div style="display:grid;gap:8px;margin-top:8px">
+      <p class="hint"><span data-l="tr">Satır başına bir marka. Sonu “ ?” olan sadece (?) gösterilir. Liste ortak.</span><span data-l="en">One brand per line. Ending in “ ?” = shown as (?) only. Shared list.</span></p>
+      <textarea id="b-tw-text" style="min-height:140px"></textarea>
+      <div class="btns"><button id="b-tw-save"><span data-l="tr">Listeyi kaydet</span><span data-l="en">Save the list</span></button><span class="hint" id="b-tw-status"></span></div>
+    </div>
+  </details>
+  <div><label for="b-text"><span data-l="tr">…veya yapıştır</span><span data-l="en">…or paste</span></label>
+  <textarea id="b-text" placeholder="Firma&#9;Ülke&#9;Telefon&#9;Markalar&#10;KOLAT MOTOR A.Ş (FALCON)&#9;Türkiye&#9;&#9;FALCON&#10;…"></textarea>
+  <p class="hint"><span data-l="tr">Excel’den kopyalanmış tablo veya her satıra bir firma.</span><span data-l="en">A table copied from Excel, or one company per line.</span></p></div>
+  <div class="btns"><button id="b-read" class="primary"><span data-l="tr">Oku ve puanla</span><span data-l="en">Read and grade</span></button><button id="b-xstop" hidden><span data-l="tr">Durdur</span><span data-l="en">Stop</span></button></div>
+  <details id="l-box" class="lbox">
+    <summary><b><span data-l="tr">…veya tek tek ekle: kartvizit ya da form</span><span data-l="en">…or add one by one: business card or form</span></b> <span class="hint" id="l-count"></span></summary>
+    <div style="display:grid;gap:10px;margin-top:10px">
+    <p class="hint" style="margin:0"><span data-l="tr">Kartvizitler ve aramada bulduğun firmalar. Sadece bu tarayıcıda saklanır.</span><span data-l="en">Business cards and companies you found. Kept only in this browser.</span></p>
+    <fieldset id="f-form" style="border:1px solid var(--line);border-radius:8px;padding:14px;display:grid;gap:10px">
+    <legend style="font-weight:700;padding:0 6px" id="f-legend"><span data-l="tr">Firma ekle</span><span data-l="en">Add a company</span></legend>
+    <div><label for="f-src"><span data-l="tr">Nerede buldun?</span><span data-l="en">Where did you find it?</span></label><input type="text" id="f-src" placeholder="Google: CNC tezgah distribütörü · MİB üye listesi · fuar standı"></div>
+    <div class="btns"><button id="ff-photo-btn">📷 <span data-l="tr">Kartvizitten doldur</span><span data-l="en">Fill from a business card</span></button><input type="file" id="ff-photo" accept="image/*" multiple hidden>
+      <span class="hint"><span data-l="tr">1 fotoğraf: form dolar. Birden çok: listeye eklenir. Fotoğraf bu bilgisayarda okunur, hiçbir yere gönderilmez.</span><span data-l="en">1 photo: fills the form. Several: added to the list. Photos are read on this computer and sent nowhere.</span></span></div>
+    <div class="colmap">
+      <div><label for="ff-company"><span data-l="tr">Firma adı *</span><span data-l="en">Company</span></label><input type="text" id="ff-company" required></div>
+      <div><label for="ff-contact"><span data-l="tr">Yetkili adı soyadı</span><span data-l="en">Contact person</span></label><input type="text" id="ff-contact"></div>
+      <div><label for="ff-title"><span data-l="tr">Görevi</span><span data-l="en">Job title</span></label><input type="text" id="ff-title" placeholder="örn. Satın Alma Müdürü" data-t-placeholder="örn. Satın Alma Müdürü|e.g. Purchasing Manager"></div>
+      <div><label for="ff-email"><span data-l="tr">E-posta</span><span data-l="en">Email</span></label><input type="text" id="ff-email" inputmode="email"></div>
+      <div><label for="ff-phone"><span data-l="tr">Telefon</span><span data-l="en">Phone</span></label><input type="text" id="ff-phone" inputmode="tel"></div>
+      <div><label for="ff-mobile"><span data-l="tr">Cep telefonu</span><span data-l="en">Mobile</span></label><input type="text" id="ff-mobile" inputmode="tel"></div>
+      <div><label for="ff-web"><span data-l="tr">Web sitesi</span><span data-l="en">Website</span></label><input type="text" id="ff-web"></div>
+      <div><label for="ff-address"><span data-l="tr">Adres</span><span data-l="en">Address</span></label><input type="text" id="ff-address"></div>
+      <div><label for="ff-city"><span data-l="tr">Şehir</span><span data-l="en">City</span></label><input type="text" id="ff-city"></div>
+      <div><label for="ff-info"><span data-l="tr">Ürünler / markalar</span><span data-l="en">Products, brands</span></label><input type="text" id="ff-info"></div>
+    </div>
+    <p class="hint" id="ff-warn"></p>
+    <div class="btns"><button class="primary" id="ff-save"><span data-l="tr">Listeye ekle</span><span data-l="en">Add to the list</span></button><button id="ff-cancel" hidden><span data-l="tr">Vazgeç</span><span data-l="en">Cancel</span></button></div>
+  </fieldset>
+    <div class="tbl" style="max-height:360px"><table id="l-tbl"></table></div>
+    <div class="btns"><button class="primary" id="l-grade"><span data-l="tr">Bu listeyi puanla</span><span data-l="en">Grade this list</span></button><button id="l-clear"><span data-l="tr">Listeyi temizle</span><span data-l="en">Clear the list</span></button></div>
+    <div class="status" id="f-status" aria-live="polite"></div>
+    </div>
+  </details>
+  <div id="b-map" hidden>
+    <p class="hint" id="b-count"></p>
+    <div class="colmap" id="b-cols"></div>
+  </div>
+  <div class="btns"><button id="b-run" disabled hidden><span data-l="tr">Tekrar puanla</span><span data-l="en">Grade again</span></button><button id="b-stop" hidden><span data-l="tr">Durdur</span><span data-l="en">Stop</span></button><button id="b-copy" hidden><span data-l="tr">Tabloyu kopyala</span><span data-l="en">Copy table</span></button></div>
+  <div class="bar" id="b-bar" hidden><i></i></div>
+  <div class="status" id="b-status" aria-live="polite"></div>
+  <div id="b-out" hidden>
+    <div class="chips" id="b-chips"></div>
+    <div class="tbl" style="max-height:640px"><table id="b-tbl"></table></div>
+    <fieldset class="dl">
+      <legend><span data-l="tr">Sonucu indir</span><span data-l="en">Download the result</span></legend>
+      <div class="btns"><button class="primary" id="b-xlsx"><span data-l="tr">Excel indir</span><span data-l="en">Download Excel</span></button>
+        <label class="hint" style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="b-xlsx-tick"> <span data-l="tr">Sadece işaretli firmalar</span><span data-l="en">Ticked companies only</span></label></div>
+      <div class="btns"><button id="b-hs"><span data-l="tr">HubSpot CSV indir</span><span data-l="en">Download HubSpot CSV</span></button><label for="b-owner" class="hint" style="margin:0">Contact Owner *</label><input type="text" id="b-owner" placeholder="kendi e-postan" data-t-placeholder="kendi e-postan|your email" style="width:210px;padding:6px 8px"></div>
+      <p class="hint" style="margin:0"><span data-l="tr">HubSpot sadece işaretli firmaları alır. Contact Owner = kendi e-postan.</span><span data-l="en">HubSpot takes ticked companies only. Contact Owner = your email.</span></p>
+    </fieldset>
+  </div>
+  <details id="b-rules">
+    <summary><b><span data-l="tr">Puanlama kuralları</span><span data-l="en">Grading rules</span></b></summary>
+    <div class="tbl" style="margin-top:8px"><table>
+      <tr><th><span data-l="tr">Puan</span><span data-l="en">Grade</span></th><th><span data-l="tr">Kural</span><span data-l="en">Rule</span></th></tr>
+      <tr><td><span class="pill p-HIGH"><span data-l="tr">Yüksek</span><span data-l="en">High</span></span></td><td><span data-l="tr">3 veya daha fazla Tayvan markasını temsil ediyor</span><span data-l="en">Represents 3 or more Taiwanese brands</span></td></tr>
+      <tr><td><span class="pill p-MEDIUM"><span data-l="tr">Orta</span><span data-l="en">Medium</span></span></td><td><span data-l="tr">2 Tayvan markası</span><span data-l="en">2 Taiwanese brands</span></td></tr>
+      <tr><td><span class="pill p-NORMAL">Normal</span></td><td><span data-l="tr">1 Tayvan markası</span><span data-l="en">1 Taiwanese brand</span></td></tr>
+      <tr><td><span class="pill p-IMPORTER"><span data-l="tr">İthalatçı</span><span data-l="en">Importer</span></span></td><td><span data-l="tr">Adında veya faaliyetinde ithalat, dış ticaret, distribütör, bayi, temsilci, toptan gibi bir kelime var</span><span data-l="en">Name or activity contains words like ithalat, dış ticaret, distribütör, bayi, temsilci, toptan</span></td></tr>
+      <tr><td><span class="pill p-MAKER"><span data-l="tr">Üretici alıcı</span><span data-l="en">Maker buyer</span></span></td><td><span data-l="tr">Türk üretici, bu fuarın ürününü <b>kullanıyor</b></span><span data-l="en">Turkish maker that <b>uses</b> this show's products</span></td></tr>
+      <tr><td><span class="pill p-PARTNER"><span data-l="tr">Ortak</span><span data-l="en">Partner</span></span></td><td><span data-l="tr">Tayvan markası + “Türkiye” adında, veya “şubesi”, “irtibat”</span><span data-l="en">Taiwanese brand + “Türkiye” in the name, or “şubesi”, “irtibat”</span></td></tr>
+      <tr><td><span class="pill p-CHECK"><span data-l="tr">Kontrol</span><span data-l="en">Check</span></span></td><td><span data-l="tr">Diğerleri. Üreticiyse alıcı mı rakip mi sen karar ver</span><span data-l="en">Everything else. For makers, decide if buyer or competitor</span></td></tr>
+      <tr><td><span class="pill p-EXCLUDE"><span data-l="tr">Hariç</span><span data-l="en">Exclude</span></span></td><td><span data-l="tr">Yabancı katılımcı, dernek, oda, medya, fuar şirketi</span><span data-l="en">Foreign exhibitor, association, chamber, media, fair company</span></td></tr>
+    </table></div>
+    <p class="hint"><span data-l="tr">Marka sayısı sadece listedeki markalarla yapılır.</span><span data-l="en">Only brands on the list are counted.</span></p>
+    <p class="hint"><span data-l="tr">Aynı +90 numaralı yabancı katılımcının markası Türk firmaya eklenir.</span><span data-l="en">A foreign exhibitor's brand goes to the Turkish company with the same +90 number.</span></p>
+  </details>
+</section>
+
+
+
+<!-- ========== M: show map ========== -->
+<section class="panel" id="pm" role="tabpanel" aria-labelledby="tab-m">
+  <h2><span data-l="tr">Tayvan ↔ Türkiye fuar eşleştirme tablosu (2027)</span><span data-l="en">Which Turkish fair to use for each Taiwan show (2027)</span></h2>
+  <p class="hint" style="margin:0"><span data-l="tr"><b>Kalın</b> tarih = kontrol edildi · Sıra 1 = önce başla · 🔎 = resmî site yok, Google araması</span><span data-l="en"><b>Bold</b> date = checked · Order 1 = start first · 🔎 = no official site, Google search</span></p>
+  <details class="howguide" open>
+    <summary><b><span data-l="tr">Firma listesi nasıl alınır?</span><span data-l="en">How to get a company list</span></b></summary>
+    <div style="display:grid;gap:8px;margin-top:8px">
+      <p class="hint" style="margin:0"><span data-l="tr">Etiket = listeyi nasıl alırsın. Kesik çizgi = tahmin; denedikten sonra düzelt.</span><span data-l="en">Tag = how to get the list. Dashed = guess; fix it after trying.</span></p>
+      <div class="howgrid">
+        <div><span class="how-t h-copy">📋 <span data-l="tr">Kopyala</span><span data-l="en">Copy</span></span><p><span data-l="tr">Tek sayfa: <b>Ctrl+A</b>, <b>Ctrl+C</b>, 3. sekmeye yapıştır.</span><span data-l="en">One page: <b>Ctrl+A</b>, <b>Ctrl+C</b>, paste in tab 3.</span></p></div>
+        <div><span class="how-t h-ext">🧩 <span data-l="tr">Eklenti</span><span data-l="en">Extension</span></span><p><span data-l="tr">Çok sayfa: <a href="https://chromewebstore.google.com/search/Instant%20Data%20Scraper" target="_blank" rel="noopener">Instant Data Scraper</a> → “Locate Next button” → “Start crawling” → CSV indir → 3. sekmeye yükle.</span><span data-l="en">Paged: <a href="https://chromewebstore.google.com/search/Instant%20Data%20Scraper" target="_blank" rel="noopener">Instant Data Scraper</a> → “Locate Next button” → “Start crawling” → download CSV → upload in tab 3.</span></p></div>
+        <div><span class="how-t h-ask">✉️ <span data-l="tr">İste</span><span data-l="en">Ask</span></span><p><span data-l="tr">Sitede liste yok: aşağıdaki şablonla organizatörden iste.</span><span data-l="en">No list on the site: ask the organiser with the template below.</span></p></div>
+        <div><span class="how-t h-center">🏢 <span data-l="tr">Merkez</span><span data-l="en">Office</span></span><p><span data-l="tr">Giriş gerekiyor veya site yasaklıyor: linki ofis sorumlusuna gönder.</span><span data-l="en">Login needed or the site forbids it: send the link to the office lead.</span></p></div>
+      </div>
+      <details><summary><b><span data-l="tr">E-posta şablonu</span><span data-l="en">Email template (Turkish)</span></b></summary>
+        <textarea id="m-mail" readonly style="min-height:190px;margin-top:6px">Konu: Katılımcı / üye listesi talebi – Tayvan Ticaret Merkezi İstanbul
+
+Sayın Yetkili,
+
+Tayvan Dış Ticaret Geliştirme Konseyi (TAITRA) İstanbul ofisi olarak, Tayvan'da düzenlenen [TAYVAN FUARI] fuarına Türk alıcıları davet ediyoruz. Ziyaretçi olarak katılan Türk firmalarına ücretsiz alım heyeti ve eşleştirme desteği sağlıyoruz.
+
+[FUAR / DERNEK ADI] katılımcı (veya üye) firmalarının listesini, mümkünse firma adı, web sitesi ve iletişim bilgileriyle paylaşabilir misiniz? Liste yalnızca bu davet için kullanılacaktır. Bir katalog veya PDF de bizim için yeterlidir.
+
+Desteğiniz için teşekkür ederiz.
+
+Saygılarımızla,
+[AD SOYAD]
+Tayvan Ticaret Merkezi İstanbul (TAITRA)
+[TELEFON] · [E-POSTA]</textarea>
+        <div class="btns" style="margin-top:6px"><button id="m-mail-copy"><span data-l="tr">Kopyala</span><span data-l="en">Copy</span></button><span class="hint" id="m-mail-st"></span></div>
+      </details>
+    </div>
+  </details>
+  <div class="tbl"><table>
+    <tr><th><span data-l="tr">Sektör</span><span data-l="en">Industry group</span></th><th><span data-l="tr">Tayvan fuarı</span><span data-l="en">Taiwan show</span></th><th><span data-l="tr">Tarih</span><span data-l="en">Dates</span></th><th><span data-l="tr">Türk kaynakları </span><span data-l="en">Turkish sources </span><span class="hint" style="font-weight:400"></span></th><th style="text-align:center"><span data-l="tr">Sıra</span><span data-l="en">Order</span></th></tr>
+    <tr><td><b><span data-l="tr">Takım tezgahı, metal işleme</span><span data-l="en">Machine tools, metalworking</span></b></td><td><b>TIMTOS</b></td><td style="white-space:nowrap"><span data-l="tr">2–6 Mart</span><span data-l="en">2–6 Mar</span></td><td><b><span data-l="tr">Fuarlar:</span><span data-l="en">Fairs:</span></b> <a href="https://maktekfuari.com/en/" target="_blank" rel="noopener">MAKTEK</a> (<span data-l="tr">tamamlandı</span><span data-l="en">done</span>) <select class="how" data-k="MAKTEK" data-def="ask" aria-label="Liste nasıl alınır: MAKTEK" data-t-aria-label="Liste nasıl alınır: MAKTEK|How to get the list: MAKTEK"></select>, <a href="https://maktekkonya.com" target="_blank" rel="noopener">MAKTEK Konya</a> (<span data-l="tr">20–23 Ekim 2027</span><span data-l="en">20–23 Oct 2027</span>, Konya) <select class="how" data-k="MAKTEK Konya" data-def="ext" aria-label="Liste nasıl alınır: MAKTEK Konya" data-t-aria-label="Liste nasıl alınır: MAKTEK Konya|How to get the list: MAKTEK Konya"></select>, <a href="https://www.win-eurasia.com/en" target="_blank" rel="noopener">WIN EURASIA</a> (<span data-l="tr">metal işleme</span><span data-l="en">metalworking</span>) <select class="how" data-k="WIN EURASIA" data-def="ext" aria-label="Liste nasıl alınır: WIN EURASIA" data-t-aria-label="Liste nasıl alınır: WIN EURASIA|How to get the list: WIN EURASIA"></select>, Bursa Metal İşleme Teknolojileri Fuarı <a class="srch" href="https://www.google.com/search?q=Bursa+Metal+%C4%B0%C5%9Fleme+Teknolojileri+Fuar%C4%B1" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> <select class="how" data-k="Bursa Metal İşleme Teknolojileri Fuarı" data-def="ext" aria-label="Liste nasıl alınır: Bursa Metal İşleme Teknolojileri Fuarı" data-t-aria-label="Liste nasıl alınır: Bursa Metal İşleme Teknolojileri Fuarı|How to get the list: Bursa Metal İşleme Teknolojileri Fuarı"></select><br><b><span data-l="tr">Dernekler, rehberler:</span><span data-l="en">Associations, directories:</span></b> TİAD <a class="srch" href="https://www.google.com/search?q=Tak%C4%B1m+Tezgahlar%C4%B1+Sanayici+ve+%C4%B0%C5%9F+%C4%B0nsanlar%C4%B1+Derne%C4%9Fi+T%C4%B0AD" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> <select class="how" data-k="TİAD" data-def="copy" aria-label="Liste nasıl alınır: TİAD" data-t-aria-label="Liste nasıl alınır: TİAD|How to get the list: TİAD"></select>, <a href="https://www.mib.org.tr" target="_blank" rel="noopener">MİB</a> <select class="how" data-k="MİB" data-def="copy" aria-label="Liste nasıl alınır: MİB" data-t-aria-label="Liste nasıl alınır: MİB|How to get the list: MİB"></select>, <a href="https://www.makinebirlik.com" target="_blank" rel="noopener">MAİB</a> <select class="how" data-k="MAİB" data-def="copy" aria-label="Liste nasıl alınır: MAİB" data-t-aria-label="Liste nasıl alınır: MAİB|How to get the list: MAİB"></select>, UMDER <a class="srch" href="https://www.google.com/search?q=UMDER+kal%C4%B1p%C3%A7%C4%B1lar+derne%C4%9Fi" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> (<span data-l="tr">kalıpçılar</span><span data-l="en">mould makers</span>) <select class="how" data-k="UMDER" data-def="copy" aria-label="Liste nasıl alınır: UMDER" data-t-aria-label="Liste nasıl alınır: UMDER|How to get the list: UMDER"></select></td><td style="text-align:center"><span class="pill p-HIGH"><span data-l="tr">✅ Tamam</span><span data-l="en">Done</span></span></td></tr><tr><td><b><span data-l="tr">Bisiklet, mikromobilite</span><span data-l="en">Bicycles, micromobility</span></b></td><td><b>TAIPEI CYCLE</b></td><td style="white-space:nowrap"><span data-l="tr">24–27 Mart</span><span data-l="en">24–27 Mar</span></td><td><b><span data-l="tr">Fuarlar:</span><span data-l="en">Fairs:</span></b> <a href="https://motobike-istanbul.tr.messefrankfurt.com/" target="_blank" rel="noopener">Motobike Istanbul</a> <select class="how" data-k="Motobike Istanbul" data-def="ext" aria-label="Liste nasıl alınır: Motobike Istanbul" data-t-aria-label="Liste nasıl alınır: Motobike Istanbul|How to get the list: Motobike Istanbul"></select>, <a href="https://eurobike-istanbul.tr.messefrankfurt.com/" target="_blank" rel="noopener">Eurobike Istanbul</a> (<span data-l="tr">aynı yerde</span><span data-l="en">same venue</span>) <select class="how" data-k="Eurobike Istanbul" data-def="ext" aria-label="Liste nasıl alınır: Eurobike Istanbul" data-t-aria-label="Liste nasıl alınır: Eurobike Istanbul|How to get the list: Eurobike Istanbul"></select><br><b><span data-l="tr">Dernekler, rehberler:</span><span data-l="en">Associations, directories:</span></b> BİSED <a class="srch" href="https://www.google.com/search?q=Bisiklet+End%C3%BCstrisi+Derne%C4%9Fi+B%C4%B0SED" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> (<span data-l="tr">bisiklet sanayi</span><span data-l="en">bicycle industry</span>) <select class="how" data-k="BİSED" data-def="copy" aria-label="Liste nasıl alınır: BİSED" data-t-aria-label="Liste nasıl alınır: BİSED|How to get the list: BİSED"></select>, <a href="https://www.trendyol.com" target="_blank" rel="noopener">Trendyol</a> ve <a href="https://www.hepsiburada.com" target="_blank" rel="noopener">Hepsiburada</a> <span data-l="tr">bisiklet satıcıları </span><span data-l="en">bicycle sellers </span><select class="how" data-k="Trendyol" data-def="ext" aria-label="Liste nasıl alınır: Trendyol" data-t-aria-label="Liste nasıl alınır: Trendyol|How to get the list: Trendyol"></select></td><td style="text-align:center"><span class="ord">1</span></td></tr><tr><td><b><span data-l="tr">Otomotiv, elektrikli araçlar</span><span data-l="en">Automotive, EV</span></b></td><td><b>TAIPEI AMPA + E-Mobility Taiwan</b></td><td style="white-space:nowrap"><span data-l="tr">13–16 Nisan</span><span data-l="en">13–16 Apr</span></td><td><b><span data-l="tr">Fuarlar:</span><span data-l="en">Fairs:</span></b> <b><a href="https://automechanika-istanbul.tr.messefrankfurt.com/" target="_blank" rel="noopener">Automechanika Istanbul</a></b> (<span data-l="tr">24–27 Mart 2027</span><span data-l="en">24–27 Mar 2027</span>, Tüyap) <select class="how" data-k="Automechanika Istanbul" data-def="ext" aria-label="Liste nasıl alınır: Automechanika Istanbul" data-t-aria-label="Liste nasıl alınır: Automechanika Istanbul|How to get the list: Automechanika Istanbul"></select>, World of Mobility (WOM, <span data-l="tr">eski</span><span data-l="en">formerly</span> Petroleum Istanbul) <a class="srch" href="https://www.google.com/search?q=WOM+World+of+Mobility+Istanbul+2027" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> (<span data-l="tr">15–17 Nisan 2027</span><span data-l="en">15–17 Apr 2027</span>, Tüyap) <select class="how" data-k="World of Mobility" data-def="ext" aria-label="Liste nasıl alınır: World of Mobility" data-t-aria-label="Liste nasıl alınır: World of Mobility|How to get the list: World of Mobility"></select>, <a href="https://motobike-istanbul.tr.messefrankfurt.com/" target="_blank" rel="noopener">Motobike Istanbul</a> (<span data-l="tr">motosiklet parçaları</span><span data-l="en">motorcycle parts</span>) <select class="how" data-k="Motobike Istanbul" data-def="ext" aria-label="Liste nasıl alınır: Motobike Istanbul" data-t-aria-label="Liste nasıl alınır: Motobike Istanbul|How to get the list: Motobike Istanbul"></select><br><b><span data-l="tr">Dernekler, rehberler:</span><span data-l="en">Associations, directories:</span></b> OSS <a class="srch" href="https://www.google.com/search?q=Otomotiv+Sat%C4%B1%C5%9F+Sonras%C4%B1+%C3%9Cr%C3%BCn+ve+Hizmetleri+Derne%C4%9Fi+OSS" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> (<span data-l="tr">yedek parça</span><span data-l="en">aftermarket</span>) <select class="how" data-k="OSS" data-def="copy" aria-label="Liste nasıl alınır: OSS" data-t-aria-label="Liste nasıl alınır: OSS|How to get the list: OSS"></select>, <a href="https://www.taysad.org.tr/en" target="_blank" rel="noopener">TAYSAD</a> (<span data-l="tr">yan sanayi</span><span data-l="en">suppliers</span>) <select class="how" data-k="TAYSAD" data-def="copy" aria-label="Liste nasıl alınır: TAYSAD" data-t-aria-label="Liste nasıl alınır: TAYSAD|How to get the list: TAYSAD"></select>, ODMD <a class="srch" href="https://www.google.com/search?q=Otomotiv+Distrib%C3%BCt%C3%B6rleri+ve+Mobilite+Derne%C4%9Fi+ODMD" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> (<span data-l="tr">distribütörler</span><span data-l="en">distributors</span>) <select class="how" data-k="ODMD" data-def="copy" aria-label="Liste nasıl alınır: ODMD" data-t-aria-label="Liste nasıl alınır: ODMD|How to get the list: ODMD"></select>, TEHAD <a class="srch" href="https://www.google.com/search?q=T%C3%BCrkiye+Elektrikli+ve+Hibrid+Ara%C3%A7lar+Derne%C4%9Fi+TEHAD" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> (<span data-l="tr">elektrikli araç</span><span data-l="en">EV</span>) <select class="how" data-k="TEHAD" data-def="copy" aria-label="Liste nasıl alınır: TEHAD" data-t-aria-label="Liste nasıl alınır: TEHAD|How to get the list: TEHAD"></select>, <a href="https://www.epdk.gov.tr" target="_blank" rel="noopener">EPDK</a> <span data-l="tr">şarj lisans listesi </span><span data-l="en">EV charging licence list </span><select class="how" data-k="EPDK" data-def="center" aria-label="Liste nasıl alınır: EPDK" data-t-aria-label="Liste nasıl alınır: EPDK|How to get the list: EPDK"></select></td><td style="text-align:center"><span class="ord">2</span></td></tr><tr><td><b><span data-l="tr">Hediyelik eşya, kırtasiye, ev dekorasyonu</span><span data-l="en">Gifts, stationery, home décor</span></b></td><td><b>DG Taiwan</b></td><td style="white-space:nowrap"><span data-l="tr">15–18 Nisan</span><span data-l="en">15–18 Apr</span></td><td><b><span data-l="tr">Fuarlar:</span><span data-l="en">Fairs:</span></b> İstanbul Kırtasiye Fuarı <a class="srch" href="https://www.google.com/search?q=%C4%B0stanbul+K%C4%B1rtasiye+Fuar%C4%B1+2027" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> (<span data-l="tr">kırtasiye, ofis, oyuncak, hobi</span><span data-l="en">stationery, office, toys, crafts; <span data-l="tr">24–27 Mart 2027</span><span data-l="en">24–27 Mar 2027</span>, İFM</span>) <select class="how" data-k="İstanbul Kırtasiye Fuarı" data-def="ext" aria-label="Liste nasıl alınır: İstanbul Kırtasiye Fuarı" data-t-aria-label="Liste nasıl alınır: İstanbul Kırtasiye Fuarı|How to get the list: İstanbul Kırtasiye Fuarı"></select>, <a href="https://www.zuchex.com" target="_blank" rel="noopener">ZUCHEX</a> (<span data-l="tr">ev ve mutfak eşyası, hediyelik, küçük ev aletleri</span><span data-l="en">housewares, gifts, small appliances</span>) <select class="how" data-k="ZUCHEX" data-def="ext" aria-label="Liste nasıl alınır: ZUCHEX" data-t-aria-label="Liste nasıl alınır: ZUCHEX|How to get the list: ZUCHEX"></select><br><b><span data-l="tr">Dernekler, rehberler:</span><span data-l="en">Associations, directories:</span></b> TÜKİD <a class="srch" href="https://www.google.com/search?q=T%C3%BCm+K%C4%B1rtasiyeciler+Derne%C4%9Fi+T%C3%9CK%C4%B0D" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> (<span data-l="tr">kırtasiye</span><span data-l="en">stationery</span>) <select class="how" data-k="TÜKİD" data-def="copy" aria-label="Liste nasıl alınır: TÜKİD" data-t-aria-label="Liste nasıl alınır: TÜKİD|How to get the list: TÜKİD"></select>, ZÜCDER <a class="srch" href="https://www.google.com/search?q=Z%C3%BCccaciyeciler+Derne%C4%9Fi+Z%C3%9CCDER" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> (<span data-l="tr">ev eşyası</span><span data-l="en">housewares</span>) <select class="how" data-k="ZÜCDER" data-def="copy" aria-label="Liste nasıl alınır: ZÜCDER" data-t-aria-label="Liste nasıl alınır: ZÜCDER|How to get the list: ZÜCDER"></select>, <a href="https://www.lisansmedya.com" target="_blank" rel="noopener">Lisans Medya</a> (<span data-l="tr">lisans ajansları ve lisans alan firmalar</span><span data-l="en">licensing agents and licensees</span>) <select class="how" data-k="Lisans Medya" data-def="copy" aria-label="Liste nasıl alınır: Lisans Medya" data-t-aria-label="Liste nasıl alınır: Lisans Medya|How to get the list: Lisans Medya"></select></td><td style="text-align:center"><span class="ord">2</span></td></tr><tr><td><b><span data-l="tr">Spor ve fitness</span><span data-l="en">Sports and fitness</span></b></td><td><b>TaiSPO</b></td><td style="white-space:nowrap"><span data-l="tr">13–15 Mayıs</span><span data-l="en">13–15 May</span></td><td><b><span data-l="tr">Fuarlar:</span><span data-l="en">Fairs:</span></b> <a href="https://worldsportsistanbul.com" target="_blank" rel="noopener">World Sports Istanbul</a> <select class="how" data-k="World Sports Istanbul" data-def="ext" aria-label="Liste nasıl alınır: World Sports Istanbul" data-t-aria-label="Liste nasıl alınır: World Sports Istanbul|How to get the list: World Sports Istanbul"></select>, <a href="https://www.expointurkey.org/expo-sport-izmir-2026" target="_blank" rel="noopener">Expo Sport İzmir</a> <select class="how" data-k="Expo Sport İzmir" data-def="ext" aria-label="Liste nasıl alınır: Expo Sport İzmir" data-t-aria-label="Liste nasıl alınır: Expo Sport İzmir|How to get the list: Expo Sport İzmir"></select>, <a href="https://ifm.com.tr/en/fairs/atrax-international-exhibition-for-attractions-parks-sports-leisure-industry-2026" target="_blank" rel="noopener">ATRAX</a> (<span data-l="tr">spor tesisleri</span><span data-l="en">sports venues</span>) <select class="how" data-k="ATRAX" data-def="ext" aria-label="Liste nasıl alınır: ATRAX" data-t-aria-label="Liste nasıl alınır: ATRAX|How to get the list: ATRAX"></select>, <a href="https://ifm.com.tr/en/fairs/prohunt-istanbul-hunting-arms-outdoor-expo-2026" target="_blank" rel="noopener">Istanbul Prohunt</a> (outdoor) <select class="how" data-k="Istanbul Prohunt" data-def="ext" aria-label="Liste nasıl alınır: Istanbul Prohunt" data-t-aria-label="Liste nasıl alınır: Istanbul Prohunt|How to get the list: Istanbul Prohunt"></select>, KARAVANİST <a class="srch" href="https://www.google.com/search?q=KARAVAN%C4%B0ST+T%C3%BCyap+2027" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> (<span data-l="tr">karavan, kamp</span><span data-l="en">caravan, camping</span>) <select class="how" data-k="KARAVANİST" data-def="ext" aria-label="Liste nasıl alınır: KARAVANİST" data-t-aria-label="Liste nasıl alınır: KARAVANİST|How to get the list: KARAVANİST"></select><br><b><span data-l="tr">Dernekler, rehberler:</span><span data-l="en">Associations, directories:</span></b> <a href="https://www.trendyol.com" target="_blank" rel="noopener">Trendyol</a> ve <a href="https://www.hepsiburada.com" target="_blank" rel="noopener">Hepsiburada</a> <span data-l="tr">büyük satıcıları </span><span data-l="en">large marketplace sellers </span><select class="how" data-k="Trendyol" data-def="ext" aria-label="Liste nasıl alınır: Trendyol" data-t-aria-label="Liste nasıl alınır: Trendyol|How to get the list: Trendyol"></select>, <a href="https://tssf.gov.tr/" target="_blank" rel="noopener">Türkiye Sualtı Sporları Federasyonu</a> (<span data-l="tr">dalış</span><span data-l="en">diving</span>) <select class="how" data-k="Türkiye Sualtı Sporları Federasyonu" data-def="copy" aria-label="Liste nasıl alınır: Türkiye Sualtı Sporları Federasyonu" data-t-aria-label="Liste nasıl alınır: Türkiye Sualtı Sporları Federasyonu|How to get the list: Türkiye Sualtı Sporları Federasyonu"></select></td><td style="text-align:center"><span class="ord">3</span></td></tr><tr><td><b><span data-l="tr">Bilişim</span><span data-l="en">ICT</span></b></td><td><b>COMPUTEX</b></td><td style="white-space:nowrap"><span data-l="tr">1–4 Haziran</span><span data-l="en">1–4 Jun</span></td><td><b><span data-l="tr">Fuarlar:</span><span data-l="en">Fairs:</span></b> <a href="https://www.win-eurasia.com/en" target="_blank" rel="noopener">WIN EURASIA</a> <select class="how" data-k="WIN EURASIA" data-def="ext" aria-label="Liste nasıl alınır: WIN EURASIA" data-t-aria-label="Liste nasıl alınır: WIN EURASIA|How to get the list: WIN EURASIA"></select>, Smart Factory Show <a class="srch" href="https://www.google.com/search?q=Smart+Factory+fuar%C4%B1+%C4%B0stanbul" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> <span class="unsure">(<span data-l="tr">doğrulanmadı</span><span data-l="en">not verified</span>)</span> <select class="how" data-k="Smart Factory Show" data-def="ext" aria-label="Liste nasıl alınır: Smart Factory Show" data-t-aria-label="Liste nasıl alınır: Smart Factory Show|How to get the list: Smart Factory Show"></select>, <a href="https://gamingistanbul.com/" target="_blank" rel="noopener">Gaming İstanbul (GIST)</a> <select class="how" data-k="Gaming İstanbul" data-def="copy" aria-label="Liste nasıl alınır: Gaming İstanbul" data-t-aria-label="Liste nasıl alınır: Gaming İstanbul|How to get the list: Gaming İstanbul"></select><br><b><span data-l="tr">Dernekler, rehberler:</span><span data-l="en">Associations, directories:</span></b> <a href="https://www.tubisad.org.tr/" target="_blank" rel="noopener">TÜBİSAD</a> (<span data-l="tr">bilişim</span><span data-l="en">ICT</span>) <select class="how" data-k="TÜBİSAD" data-def="copy" aria-label="Liste nasıl alınır: TÜBİSAD" data-t-aria-label="Liste nasıl alınır: TÜBİSAD|How to get the list: TÜBİSAD"></select>, <a href="http://teknopark.sanayi.gov.tr" target="_blank" rel="noopener">Teknopark listesi</a> <select class="how" data-k="Teknopark listesi" data-def="copy" aria-label="Liste nasıl alınır: Teknopark listesi" data-t-aria-label="Liste nasıl alınır: Teknopark listesi|How to get the list: Teknopark listesi"></select></td><td style="text-align:center"><span class="ord">4</span></td></tr><tr><td><b><span data-l="tr">Gıda, gıda işleme makineleri, ambalaj, ilaç makineleri</span><span data-l="en">Food, food processing machinery, packaging, pharma machinery</span></b></td><td><b>FOOD TAIPEI, FOODTECH, BIO/PHARMATECH, TAIPEI PACK</b></td><td style="white-space:nowrap"><span data-l="tr">23–26 Haziran</span><span data-l="en">23–26 Jun</span></td><td><b><span data-l="tr">Fuarlar:</span><span data-l="en">Fairs:</span></b> <b>WorldFood İstanbul <a class="srch" href="https://www.google.com/search?q=WorldFood+%C4%B0stanbul+2026" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a></b> (<span data-l="tr">15–18 Aralık 2026</span><span data-l="en">15–18 Dec 2026</span>, İFM) <select class="how" data-k="WorldFood İstanbul" data-def="ext" aria-label="Liste nasıl alınır: WorldFood İstanbul" data-t-aria-label="Liste nasıl alınır: WorldFood İstanbul|How to get the list: WorldFood İstanbul"></select>, <b>Foodist İstanbul <a class="srch" href="https://www.google.com/search?q=Foodist+%C4%B0stanbul+fuar%C4%B1" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a></b> (Tüyap) <select class="how" data-k="Foodist İstanbul" data-def="ext" aria-label="Liste nasıl alınır: Foodist İstanbul" data-t-aria-label="Liste nasıl alınır: Foodist İstanbul|How to get the list: Foodist İstanbul"></select>, <b>ANFAŞ Food Product <a class="srch" href="https://www.google.com/search?q=ANFA%C5%9E+Food+Product+2027" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a></b> (<span data-l="tr">12–15 Ocak 2027</span><span data-l="en">12–15 Jan 2027</span>, Antalya) <select class="how" data-k="ANFAŞ Food Product" data-def="ext" aria-label="Liste nasıl alınır: ANFAŞ Food Product" data-t-aria-label="Liste nasıl alınır: ANFAŞ Food Product|How to get the list: ANFAŞ Food Product"></select>, Avrasya Ambalaj <a class="srch" href="https://www.google.com/search?q=Avrasya+Ambalaj+Fuar%C4%B1" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> <select class="how" data-k="Avrasya Ambalaj" data-def="ext" aria-label="Liste nasıl alınır: Avrasya Ambalaj" data-t-aria-label="Liste nasıl alınır: Avrasya Ambalaj|How to get the list: Avrasya Ambalaj"></select>, Plast Eurasia <a class="srch" href="https://www.google.com/search?q=Plast+Eurasia+%C4%B0stanbul" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> <select class="how" data-k="Plast Eurasia" data-def="ext" aria-label="Liste nasıl alınır: Plast Eurasia" data-t-aria-label="Liste nasıl alınır: Plast Eurasia|How to get the list: Plast Eurasia"></select><br><b><span data-l="tr">Dernekler, rehberler:</span><span data-l="en">Associations, directories:</span></b> TGDF <a class="srch" href="https://www.google.com/search?q=T%C3%BCrkiye+G%C4%B1da+ve+%C4%B0%C3%A7ecek+Sanayii+Dernekleri+Federasyonu+TGDF" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> (<span data-l="tr">gıda ve içecek sanayi</span><span data-l="en">food and beverage industry</span>) <select class="how" data-k="TGDF" data-def="copy" aria-label="Liste nasıl alınır: TGDF" data-t-aria-label="Liste nasıl alınır: TGDF|How to get the list: TGDF"></select>, GPD <a class="srch" href="https://www.google.com/search?q=G%C4%B1da+Perakendecileri+Derne%C4%9Fi+GPD" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> (<span data-l="tr">gıda perakendecileri</span><span data-l="en">food retailers</span>) <select class="how" data-k="GPD" data-def="copy" aria-label="Liste nasıl alınır: GPD" data-t-aria-label="Liste nasıl alınır: GPD|How to get the list: GPD"></select></td><td style="text-align:center"><span class="ord">4</span></td></tr><tr><td><b><span data-l="tr">Medikal</span><span data-l="en">Medical</span></b></td><td><b>MEDICAL TAIWAN</b></td><td style="white-space:nowrap"><span data-l="tr">8–10 Temmuz</span><span data-l="en">8–10 Jul</span></td><td><b><span data-l="tr">Fuarlar:</span><span data-l="en">Fairs:</span></b> <a href="https://www.eventseye.com/fairs/f-expomed-eurasia-891-1.html" target="_blank" rel="noopener">Expomed Eurasia</a> (<span data-l="tr">15–18 Nisan 2027</span><span data-l="en">15–18 Apr 2027</span>, Tüyap) <select class="how" data-k="Expomed Eurasia" data-def="ext" aria-label="Liste nasıl alınır: Expomed Eurasia" data-t-aria-label="Liste nasıl alınır: Expomed Eurasia|How to get the list: Expomed Eurasia"></select><br><b><span data-l="tr">Dernekler, rehberler:</span><span data-l="en">Associations, directories:</span></b> ARTED <a class="srch" href="https://www.google.com/search?q=Ara%C5%9Ft%C4%B1rmac%C4%B1+T%C4%B1p+Teknolojileri+%C3%9Creticileri+Derne%C4%9Fi+ARTED" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> <select class="how" data-k="ARTED" data-def="copy" aria-label="Liste nasıl alınır: ARTED" data-t-aria-label="Liste nasıl alınır: ARTED|How to get the list: ARTED"></select>, MEDİKÜM <a class="srch" href="https://www.google.com/search?q=MED%C4%B0K%C3%9CM+Medikal+Sanayi+%C4%B0novasyon+K%C3%BCmesi+Derne%C4%9Fi" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> <select class="how" data-k="MEDİKÜM" data-def="copy" aria-label="Liste nasıl alınır: MEDİKÜM" data-t-aria-label="Liste nasıl alınır: MEDİKÜM|How to get the list: MEDİKÜM"></select>, İSEK <a class="srch" href="https://www.google.com/search?q=%C4%B0stanbul+Sa%C4%9Fl%C4%B1k+End%C3%BCstrisi+K%C3%BCmelenmesi+Derne%C4%9Fi+%C4%B0SEK" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> (<span data-l="tr">medikal kümeler</span><span data-l="en">medical clusters</span>) <select class="how" data-k="İSEK" data-def="copy" aria-label="Liste nasıl alınır: İSEK" data-t-aria-label="Liste nasıl alınır: İSEK|How to get the list: İSEK"></select>, <a href="https://titck.gov.tr/" target="_blank" rel="noopener">TİTCK ÜTS</a> (<span data-l="tr">tıbbi cihaz kayıt sistemi</span><span data-l="en">medical device register</span>) <select class="how" data-k="TİTCK ÜTS" data-def="center" aria-label="Liste nasıl alınır: TİTCK ÜTS" data-t-aria-label="Liste nasıl alınır: TİTCK ÜTS|How to get the list: TİTCK ÜTS"></select></td><td style="text-align:center"><span class="ord">5</span></td></tr><tr><td><b><span data-l="tr">Havacılık ve savunma</span><span data-l="en">Aerospace and defence</span></b></td><td><b>TADTE</b></td><td style="white-space:nowrap"><span data-l="tr">23–25 Eylül</span><span data-l="en">23–25 Sep</span></td><td><b><span data-l="tr">Fuarlar:</span><span data-l="en">Fairs:</span></b> IDEF <a class="srch" href="https://www.google.com/search?q=IDEF+Uluslararas%C4%B1+Savunma+Sanayii+Fuar%C4%B1" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> <select class="how" data-k="IDEF" data-def="ext" aria-label="Liste nasıl alınır: IDEF" data-t-aria-label="Liste nasıl alınır: IDEF|How to get the list: IDEF"></select>, <a href="https://www.sahaexpo.com" target="_blank" rel="noopener">SAHA Expo</a> (İFM) <select class="how" data-k="SAHA Expo" data-def="ext" aria-label="Liste nasıl alınır: SAHA Expo" data-t-aria-label="Liste nasıl alınır: SAHA Expo|How to get the list: SAHA Expo"></select><br><b><span data-l="tr">Dernekler, rehberler:</span><span data-l="en">Associations, directories:</span></b> <a href="https://www.sahaistanbul.org.tr" target="_blank" rel="noopener">SAHA İstanbul</a> (<span data-l="tr">savunma ve havacılık kümesi; üye listesi</span><span data-l="en">defence and aerospace cluster, member list</span>) <select class="how" data-k="SAHA İstanbul" data-def="copy" aria-label="Liste nasıl alınır: SAHA İstanbul" data-t-aria-label="Liste nasıl alınır: SAHA İstanbul|How to get the list: SAHA İstanbul"></select>, SASAD <a class="srch" href="https://www.google.com/search?q=Savunma+ve+Havac%C4%B1l%C4%B1k+Sanayii+%C4%B0malat%C3%A7%C4%B1lar+Derne%C4%9Fi+SASAD" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> <select class="how" data-k="SASAD" data-def="copy" aria-label="Liste nasıl alınır: SASAD" data-t-aria-label="Liste nasıl alınır: SASAD|How to get the list: SASAD"></select></td><td style="text-align:center"><span class="ord">6</span></td></tr><tr><td><b><span data-l="tr">Elektronik, AIoT</span><span data-l="en">Electronics, AIoT</span></b></td><td><b>TAITRONICS + AIoT Taiwan</b></td><td style="white-space:nowrap"><span data-l="tr">19–21 Ekim</span><span data-l="en">19–21 Oct</span></td><td><b><span data-l="tr">Fuarlar:</span><span data-l="en">Fairs:</span></b> <a href="https://www.win-eurasia.com/en" target="_blank" rel="noopener">WIN EURASIA</a> <select class="how" data-k="WIN EURASIA" data-def="ext" aria-label="Liste nasıl alınır: WIN EURASIA" data-t-aria-label="Liste nasıl alınır: WIN EURASIA|How to get the list: WIN EURASIA"></select>, Smart Factory Show <a class="srch" href="https://www.google.com/search?q=Smart+Factory+fuar%C4%B1+%C4%B0stanbul" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> <span class="unsure">(<span data-l="tr">doğrulanmadı</span><span data-l="en">not verified</span>)</span> <select class="how" data-k="Smart Factory Show" data-def="ext" aria-label="Liste nasıl alınır: Smart Factory Show" data-t-aria-label="Liste nasıl alınır: Smart Factory Show|How to get the list: Smart Factory Show"></select><br><b><span data-l="tr">Dernekler, rehberler:</span><span data-l="en">Associations, directories:</span></b> TESİD <a class="srch" href="https://www.google.com/search?q=T%C3%BCrk+Elektronik+Sanayicileri+Derne%C4%9Fi+TES%C4%B0D" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> (<span data-l="tr">elektronik</span><span data-l="en">electronics</span>) <select class="how" data-k="TESİD" data-def="copy" aria-label="Liste nasıl alınır: TESİD" data-t-aria-label="Liste nasıl alınır: TESİD|How to get the list: TESİD"></select>, <a href="https://www.tubisad.org.tr/" target="_blank" rel="noopener">TÜBİSAD</a> (<span data-l="tr">bilişim</span><span data-l="en">ICT</span>) <select class="how" data-k="TÜBİSAD" data-def="copy" aria-label="Liste nasıl alınır: TÜBİSAD" data-t-aria-label="Liste nasıl alınır: TÜBİSAD|How to get the list: TÜBİSAD"></select>, <a href="http://teknopark.sanayi.gov.tr" target="_blank" rel="noopener">Teknopark listesi</a> <select class="how" data-k="Teknopark listesi" data-def="copy" aria-label="Liste nasıl alınır: Teknopark listesi" data-t-aria-label="Liste nasıl alınır: Teknopark listesi|How to get the list: Teknopark listesi"></select></td><td style="text-align:center"><span class="ord">7</span></td></tr><tr><td><b><span data-l="tr">Enerji, net sıfır, su</span><span data-l="en">Energy, net zero, water</span></b></td><td><b>Energy Taiwan, Net-Zero Taiwan, TIWW</b></td><td style="white-space:nowrap"><span data-l="tr">27–29 Ekim</span><span data-l="en">27–29 Oct</span></td><td><b><span data-l="tr">Fuarlar:</span><span data-l="en">Fairs:</span></b> ISK-SODEX <a class="srch" href="https://www.google.com/search?q=ISK-SODEX+%C4%B0stanbul" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> <select class="how" data-k="ISK-SODEX" data-def="ext" aria-label="Liste nasıl alınır: ISK-SODEX" data-t-aria-label="Liste nasıl alınır: ISK-SODEX|How to get the list: ISK-SODEX"></select>, Replast Eurasia <a class="srch" href="https://www.google.com/search?q=Replast+Eurasia+%C4%B0stanbul" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> <select class="how" data-k="Replast Eurasia" data-def="ext" aria-label="Liste nasıl alınır: Replast Eurasia" data-t-aria-label="Liste nasıl alınır: Replast Eurasia|How to get the list: Replast Eurasia"></select>, <b><a href="https://solarexistanbul.com/en/" target="_blank" rel="noopener">SolarEX İstanbul</a></b> (<span data-l="tr">7–9 Nisan 2027</span><span data-l="en">7–9 Apr 2027</span>, İFM) <select class="how" data-k="SolarEX İstanbul" data-def="ext" aria-label="Liste nasıl alınır: SolarEX İstanbul" data-t-aria-label="Liste nasıl alınır: SolarEX İstanbul|How to get the list: SolarEX İstanbul"></select>, <b><a href="https://ifat.de/en/eurasia" target="_blank" rel="noopener">IFAT Eurasia</a></b> (<span data-l="tr">5–7 Mayıs 2027, İstanbul; su, atık su</span><span data-l="en">5–7 May 2027, Istanbul; water, wastewater</span>) <select class="how" data-k="IFAT Eurasia" data-def="ext" aria-label="Liste nasıl alınır: IFAT Eurasia" data-t-aria-label="Liste nasıl alınır: IFAT Eurasia|How to get the list: IFAT Eurasia"></select>, ICCI <a class="srch" href="https://www.google.com/search?q=ICCI+enerji+ve+%C3%A7evre+fuar%C4%B1+%C4%B0stanbul" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a> (<span data-l="tr">enerji ve çevre</span><span data-l="en">energy and environment</span>) <select class="how" data-k="ICCI" data-def="ext" aria-label="Liste nasıl alınır: ICCI" data-t-aria-label="Liste nasıl alınır: ICCI|How to get the list: ICCI"></select>, <b><span data-l="tr">Dünya Su Kongresi</span><span data-l="en">World Water Congress</span> <a class="srch" href="https://www.google.com/search?q=IWA+World+Water+Congress+2027+Istanbul" target="_blank" rel="noopener" title="Resmî site bulunamadı; Google araması açılır" data-t-title="Resmî site bulunamadı; Google araması açılır|No official site found; opens a Google search">🔎</a></b> (<span data-l="tr">4–8 Ekim 2027</span><span data-l="en">4–8 Oct 2027</span>, İstanbul) <select class="how" data-k="Dünya Su Kongresi / World Water Congress" data-def="ext" aria-label="Liste nasıl alınır: Dünya Su Kongresi / World Water Congress" data-t-aria-label="Liste nasıl alınır: Dünya Su Kongresi / World Water Congress|How to get the list: Dünya Su Kongresi / World Water Congress"></select><br><b><span data-l="tr">Dernekler, rehberler:</span><span data-l="en">Associations, directories:</span></b> <a href="https://www.epdk.gov.tr" target="_blank" rel="noopener">EPDK</a> <span data-l="tr">lisans listeleri </span><span data-l="en">energy licence lists </span><select class="how" data-k="EPDK" data-def="center" aria-label="Liste nasıl alınır: EPDK" data-t-aria-label="Liste nasıl alınır: EPDK|How to get the list: EPDK"></select></td><td style="text-align:center"><span class="ord">7</span></td></tr>
+  </table></div>
+</section>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+/* ===== Language (TR / EN): one language at a time, remembered on this browser ===== */
+let LANG='tr'; try{ const l=localStorage.getItem('tab_lang'); if(l==='en'||l==='tr') LANG=l; }catch(e){}
+document.documentElement.dataset.lang=LANG; document.documentElement.lang=LANG;
+const T=(tr,en)=>LANG==='en'?en:tr;
+// Lazy label for tables built once at load: turns into the current language whenever it is printed.
+class TLabel{ constructor(tr,en){ this.tr=tr; this.en=en; } toString(){ return T(this.tr,this.en); } valueOf(){ return this.toString(); } }
+const TL=(tr,en)=>new TLabel(tr,en);
+const dateL=d=>{ const m=String(d).match(/^(\S+) (\S+) \/ (\S+)$/); return m?T(`${m[1]} ${m[2]}`,`${m[1]} ${m[3]}`):d; };
+const RS=x=>!x?'':LANG==='en'?(x.reason_en||x.reason_tr||''):(x.reason_tr||x.reason_en||'');
+const aoa=rows=>XLSX.utils.aoa_to_sheet(rows.map(r=>r.map(c=>c instanceof TLabel?String(c):c)));
+
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const SHOWS=[
+ ['TIMTOS 2027','Taipei Int\'l Machine Tool Show','2–6 Mart / Mar','2027-03-06'],
+ ['TAIPEI CYCLE 2027','Taipei Int\'l Cycle Show','24–27 Mart / Mar','2027-03-27'],
+ ['TAIPEI AMPA 2027','Taipei Int\'l Automobile and Motorcycle Parts & Accessories Show, held together with E-Mobility Taiwan','13–16 Nisan / Apr','2027-04-16'],
+ ['DG Taiwan 2027','Designed Giftionery Taiwan','15–18 Nisan / Apr','2027-04-18'],
+ ['TaiSPO 2027','Sports and Fitness Taiwan','13–15 Mayıs / May','2027-05-15'],
+ ['COMPUTEX TAIPEI 2027','COMPUTEX','1–4 Haziran / Jun','2027-06-04'],
+ ['FOOD TAIPEI 2027','Taipei Int\'l Food Show, held together with FOODTECH TAIPEI (food processing machinery), BIO/PHARMATECH TAIWAN (bio/pharma machinery) and TAIPEI PACK (packaging industry)','23–26 Haziran / Jun','2027-06-26'],
+ ['MEDICAL TAIWAN 2027','Taiwan Int\'l Medical, Health & Care Expo','8–10 Temmuz / Jul','2027-07-10'],
+ ['TADTE 2027','Taipei Aerospace & Defense Technology Exhibition','23–25 Eylül / Sep','2027-09-25'],
+ ['TAITRONICS 2027','Taipei Int\'l Electronics Show, held together with AIoT Taiwan','19–21 Ekim / Oct','2027-10-21'],
+ ['Energy Taiwan 2027','Energy Taiwan, held together with Net-Zero Taiwan and Taiwan Int\'l Water Week (TIWW)','27–29 Ekim / Oct','2027-10-29']];
+const TODAY=new Date().toISOString().slice(0,10);
+const showVal=([s,full,d])=>`${s} — ${full} (${d})`;
+for(const id of ['#a-show','#b-show']){
+  const up=SHOWS.filter(x=>x[3]>=TODAY);
+  $(id).innerHTML='<option value="">— '+T('Fuar seç','Choose a show')+' —</option>'+(up.length?up.map(x=>`<option value="${esc(showVal(x))}">${esc(x[0])} · ${esc(dateL(x[2]))}</option>`).join(''):'<option value="" disabled>— '+T('2027 fuarları bitti','All 2027 shows are over')+' —</option>');
+  $(id).selectedIndex=0;
+}
+// Every save needs a chosen show, so nothing lands under the wrong show.
+function need(showId,statusId){
+  if(!$(showId).value){ $(statusId).textContent=T('Önce fuarı seç','Choose the show first'); $(showId).focus(); return false; }
+  return true;
+}
+function setShow(id,v){ const el=$(id); if(v&&![...el.options].some(o=>o.value===v)){ const o=document.createElement('option'); o.value=v; o.textContent=v.split(' — ')[0]+T(' (geçmiş)',' (past)'); el.append(o); } el.value=v||''; }
+// ===== Settings: fill FIREBASE_CONFIG to share the "how to get the list" tags (and, if allowed, the brand list) =====
+const FIREBASE_CONFIG={apiKey:"AIzaSyDCm-mdbt8zoA5sTk84OsTA8EHR337mmyI",authDomain:"buyer-c7221.firebaseapp.com",projectId:"buyer-c7221",storageBucket:"buyer-c7221.firebasestorage.app",messagingSenderId:"69344593670",appId:"1:69344593670:web:8bcc15ab876ee062e48087"}; // null = nothing shared
+const BRANDS_EDITABLE=false; // true = brand list can be edited on the page and is shared through Firebase
+const CLAUDE_URL='https://claude.ai/artifact/X5JNYzjcqXMVbUGP2PJ5Z8';
+let sample=null, db=null;
+// Downloads go straight to the browser's download folder.
+const downloads={save:async({filename,data})=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(data); a.download=filename; document.body.append(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1500); }};
+function loadScript(src){ return new Promise((res,rej)=>{ const sc=document.createElement('script'); sc.src=src; sc.onload=res; sc.onerror=rej; document.head.append(sc); }); }
+(async()=>{
+  await null;
+  renderTW();
+  if(FIREBASE_CONFIG){
+    try{ await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js'); await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js');
+      firebase.initializeApp(FIREBASE_CONFIG); db=firebase.firestore(); }catch(e){ db=null; }
+  }
+  renderTW();
+  if(db&&BRANDS_EDITABLE){ try{ db.collection('config').doc('twbrands').onSnapshot(d=>{ const v=d&&d.exists!==false&&d.data?d.data():null; if(v&&Array.isArray(v.list)&&v.list.length){ TW=v.list; renderTW(); $('#b-tw-status').textContent=T('Son kaydeden','Last saved by')+` ${v.by||'—'} · ${fmt(v.at)}`; } },()=>{}); }catch(e){} }
+  watchHow();
+})();
+try{ $('#me').value=localStorage.getItem('tab-me')||''; }catch(e){}
+$('#me').placeholder=T('Adın (isteğe bağlı)','Your name (optional)');
+$('#me').addEventListener('change',()=>{ try{ localStorage.setItem('tab-me',$('#me').value.trim()); }catch(e){} });
+const me=()=>$('#me').value.trim()||'—';
+
+// tabs
+const TABS=[['#tab-m','#pm'],['#tab-a','#pa'],['#tab-b','#pb']];
+function openTab(t){ for(const [t2,p2] of TABS){ $(t2).setAttribute('aria-selected',t2===t); $(p2).hidden=(t2!==t); } }
+for(const [t] of TABS) $(t).addEventListener('click',()=>openTab(t));
+
+let lastSaveOk=false;
+async function saveFile(filename, wb){
+  lastSaveOk=false;
+  const out=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+  const blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  if(!downloads){ return T('Bu görünümde indirme yapılamıyor; "Tabloyu kopyala" kullan.','Downloads unavailable here; use Copy.'); }
+  try{ await downloads.save({filename, data: blob}); lastSaveOk=true; return T('İndirildi: ','Saved: ')+filename; }
+  catch(e){ return T('İndirme iptal edildi: ','Download not saved: ')+(e.message||e.code||e); }
+}
+async function copyText(t, statusEl){
+  try{ await navigator.clipboard.writeText(t); statusEl.textContent=T('Kopyalandı — Excel\'e yapıştır','Copied — paste into Excel'); }
+  catch(e){ statusEl.textContent=T('Kopyalanamadı','Could not copy'); }
+}
+const toTSV=rows=>rows.map(r=>r.map(c=>String(c??'').replace(/[\t\n]/g,' ')).join('\t')).join('\n');
+
+/* ================= A: keyword library (from the office's keyword sheet) ================= */
+const KW={"TaiSPO": [["Fitness Equipment", "fitness equipment importer, gym equipment distributor, gym chain, fitness club, hotel gym procurement, gym fit-out contractor, Pilates studio, yoga studio, martial arts gym", "fitness ekipmanları ithalatçısı, spor aletleri distribütörü, spor salonu zinciri, fitness kulübü, otel spor salonu, spor salonu kurulumu, pilates stüdyosu, yoga stüdyosu, dövüş sanatları salonu"], ["Outdoor Sports", "outdoor retailer, camping gear distributor, bicycle dealer, bike rental, cycling tour operator, sports facility operator, caravan dealer, outdoor brand agent", "outdoor mağazası, kamp malzemeleri, bisiklet bayi, bisiklet kiralama, bisiklet turu, spor tesisi işletmesi, karavan bayi, doğa sporları"], ["Diving & Water Sports", "dive center, diving shop, water sports club, SUP rental, kayak rental, resort water sports, swimwear distributor, wetsuit, lifesaving equipment", "dalış merkezi, dalış malzemeleri, su sporları kulübü, SUP kiralama, kano kiralama, otel su sporları, mayo toptan, can yeleği, cankurtaran ekipmanları"], ["Racquets & Emerging Sports", "tennis equipment distributor, badminton equipment, racket stringing, tennis club, sports academy, sports sensor", "tenis malzemeleri, badminton malzemeleri, raket kordaj, tenis kulübü, spor akademisi, spor sensörü"], ["Sports and Fashion", "sportswear distributor, sports retail chain, department store buyer, e-commerce seller, athletic footwear, functional fabric sourcing", "spor giyim distribütörü, spor mağazaları zinciri, AVM mağazası, e-ticaret satıcısı, spor ayakkabı, teknik kumaş"], ["Marketing & Service", "gym management software, sports venue operator, fitness franchise, sports event organizer, sports marketing agency", "spor salonu yönetim yazılımı, spor tesisi işletmecisi, fitness franchise, spor organizasyon şirketi, spor pazarlama ajansı"], ["All Age Fitness", "elderly care home, rehabilitation clinic, senior fitness, community health center, kids gym, children's sports academy", "huzurevi, rehabilitasyon merkezi, yaşlı fitness, belediye spor merkezi, çocuk spor kulübü, çocuk oyun ve spor merkezi"], ["Sport-bilities", "sports technology distributor, smart gym, sports tech startup, venture capital, accelerator, university sports science", "spor teknolojileri, akıllı spor salonu, girişim sermayesi, hızlandırıcı, teknopark, spor bilimleri fakültesi"], ["Nutrition Supplements", "sports nutrition importer, supplement distributor, protein powder wholesaler, pharmacy chain, functional beverage, nutrition ingredients", "sporcu besini ithalatçısı, gıda takviyesi distribütörü, protein tozu toptan, eczane, kozmetik mağazası zinciri, fonksiyonel içecek, hammadde"], ["Sports Recovery", "physiotherapy clinic, sports medicine, professional sports club, spa, wellness center, massage chair distributor, recovery equipment", "fizik tedavi, spor hekimliği, spor kulübü, spa, wellness merkezi, masaj koltuğu, toparlanma ekipmanları"], ["Professional Education & Training", "fitness academy, personal trainer certification, sports association, coach education", "fitness akademisi, PT sertifika, antrenör eğitimi, spor federasyonu, spor derneği"], ["Pickleball Pavilion", "pickleball distributor, pickleball court construction, sports flooring, pickleball club, tournament organizer", "pickleball malzemeleri, pickleball kortu, spor zemini, pickleball kulübü, turnuva organizasyonu"], ["*", "importer, distributor, exclusive distributor, wholesaler, dealer, sourcing", "ithalatçı, distribütör, Türkiye distribütörü, bayi, toptancı, satın alma"]], "MEDICAL TAIWAN": [["AI & Smart Medical", "hospital IT, healthcare AI distributor, digital health, medical software integrator", "sağlık bilişimi, dijital sağlık, hastane bilgi sistemleri"], ["Assistive Devices & Orthopedics", "orthopedic distributor, mobility aids, wheelchair dealer, orthotics & prosthetics", "ortopedi, medikal market, tekerlekli sandalye bayi, ortez protez"], ["Health Promotion & Preventive Care", "health check-up center, pharmacy chain, preventive care, wellness clinic", "check-up merkezi, eczane zinciri, koruyucu sağlık, OSGB"], ["Medical Components & Accessories", "medical OEM, medical components sourcing, contract manufacturer", "tıbbi cihaz üreticisi, medikal yedek parça, fason üretim"], ["Medical Devices & Consumables", "medical device importer, medical distributor, hospital procurement, medical consumables, tender", "tıbbi cihaz ithalatçısı, medikal distribütör, tıbbi sarf malzeme, hastane satın alma, ihale"], ["Physiotherapy & Rehabilitation Technology", "rehabilitation center, physiotherapy clinic, rehab equipment distributor, exoskeleton, sports medicine", "fizik tedavi merkezi, rehabilitasyon merkezi, fizyoterapi cihazları, spor hekimliği"], ["Precision Medicine & Start-up Pavilion", "healthtech investor, medtech accelerator, precision medicine, biotech partnership", "sağlık teknolojisi yatırımcısı, medtech hızlandırıcı, biyoteknoloji"], ["Smart Long-Term Care", "elderly care home, nursing home, long-term care, home care provider, assisted living", "huzurevi, bakım merkezi, yaşlı bakım, evde bakım hizmeti"], ["Smart Textiles & Medical Wearables", "medical wearables, smart textiles, remote patient monitoring, wound care distributor", "giyilebilir sağlık teknolojisi, medikal tekstil, uzaktan hasta takibi, yara bakım ürünleri"], ["*", "importer, distributor, exclusive agent, wholesaler, procurement, sourcing", "ithalatçı, distribütör, bayi, toptancı, satın alma"]], "COMPUTEX": [["Robotics", "robotics distributor, industrial robot integrator, automation solutions, AMR, warehouse automation, service robot", "robotik distribütörü, endüstriyel robot entegratörü, otomasyon çözümleri, depo otomasyonu, servis robotu"], ["TechXperience", "consumer tech retailer, tech store chain, experiential marketing agency", "teknoloji mağazası, tüketici elektroniği perakende, deneyim pazarlaması"], ["ePaper Pavilion", "electronic shelf label, ESL integrator, digital signage, e-paper display, e-reader distributor, retail technology", "elektronik raf etiketi, dijital tabela, e-kağıt ekran, perakende teknolojileri"], ["Advanced Communication & Networking", "networking equipment distributor, telecom operator, ISP, 5G, Wi-Fi, network integrator", "ağ ekipmanları distribütörü, telekom operatörü, internet servis sağlayıcı, 5G, ağ entegratörü"], ["AI Computing & Tech", "AI server distributor, GPU server, data center, cloud provider, HPC", "yapay zeka sunucu, GPU sunucu, veri merkezi, bulut hizmet sağlayıcı"], ["Components & Advanced Power Tech", "electronic components distributor, EMS, power supply, battery energy storage, UPS", "elektronik komponent distribütörü, elektronik kart üretimi, güç kaynağı, enerji depolama, UPS"], ["Consumer Electronic Accessories", "mobile accessories importer, consumer electronics wholesaler, e-commerce seller, electronics retail chain", "telefon aksesuarları ithalatçısı, elektronik toptan, e-ticaret satıcısı, teknoloji marketi"], ["Gaming", "gaming peripherals distributor, gaming PC builder, esports team, gaming cafe, game publisher", "oyun ekipmanları distribütörü, gaming bilgisayar, espor takımı, internet kafe, oyun salonu"], ["Industrial IoT & Embedded Systems", "industrial PC distributor, embedded systems, IIoT integrator, edge computing, smart factory", "endüstriyel bilgisayar, gömülü sistemler, endüstriyel IoT, akıllı fabrika, sistem entegratörü"], ["InnoVEX", "venture capital, corporate innovation, accelerator, startup partnership", "girişim sermayesi, kurumsal inovasyon, hızlandırıcı, teknopark"], ["Intelligent Business Solutions", "POS system integrator, retail technology, smart office, business display, enterprise IT procurement", "POS sistemleri, perakende yazılım, akıllı ofis, kurumsal BT satın alma"], ["International Exhibitors Area", "exclusive distributor, brand agent, master distributor", "Türkiye distribütörü, yetkili distribütör, marka temsilcisi"], ["Semiconductors & Hospitality Suites", "semiconductor distributor, chip distributor, IC design, automotive electronics, defense electronics", "yarı iletken, çip distribütörü, savunma elektroniği, otomotiv elektroniği"], ["Smart Mobility and Drone Tech", "automotive electronics, fleet management, drone distributor, UAV, EV charging", "otomotiv elektroniği, filo yönetimi, drone distribütörü, İHA, elektrikli araç şarj"], ["Storage & Management Solutions", "storage distributor, NAS, SSD, enterprise storage, data center, surveillance", "depolama çözümleri, NAS, SSD, veri merkezi, güvenlik kamerası"], ["System Integration Solution", "system integrator, PC assembler, IT solutions provider, public tender", "sistem entegratörü, bilgisayar toplama, BT çözüm ortağı, kamu ihalesi"], ["*", "importer, distributor, value-added reseller, reseller, OEM/ODM sourcing", "ithalatçı, distribütör, bayi, çözüm ortağı, toptancı"]], "TAIPEI CYCLE": [["Complete Bicycles", "bicycle importer, bicycle distributor, bike shop, bicycle retail chain, sporting goods retailer, bike rental, bike sharing", "bisiklet ithalatçısı, bisiklet distribütörü, bisiklet mağazası, bisiklet bayi, spor mağazası, bisiklet kiralama, paylaşımlı bisiklet"], ["Bicycle Parts", "bicycle parts wholesaler, bicycle components, bicycle manufacturer, bike assembly, OEM bicycle brand, bike repair shop", "bisiklet yedek parça toptan, bisiklet parçaları, bisiklet üreticisi, bisiklet montaj, bisiklet tamir servisi"], ["Bicycle Accessories", "bicycle accessories wholesaler, cycling helmet, bike light, bike lock, cycling apparel, outdoor retailer", "bisiklet aksesuarları toptan, bisiklet kaskı, bisiklet lambası, bisiklet kilidi, bisiklet giyim, outdoor mağazası"], ["E-Bikes & Drive units", "e-bike importer, e-bike distributor, electric bicycle, drive unit, e-bike motor, e-bike battery, e-bike manufacturer", "elektrikli bisiklet ithalatçısı, elektrikli bisiklet bayi, e-bisiklet motoru, batarya, elektrikli bisiklet üreticisi"], ["Cargo bike & Micro-mobility", "cargo bike, last-mile delivery, courier, micromobility operator, e-scooter sharing, municipality", "kargo bisikleti, son mil teslimat, kurye, mikromobilite, elektrikli scooter paylaşım, belediye"], ["Cycling e-Sports", "smart trainer distributor, indoor cycling, virtual cycling, cycling club, gym", "akıllı bisiklet trainer, spinning, sanal bisiklet, bisiklet kulübü, spor salonu"], ["Advanced Composites", "carbon fiber composites, composite frame manufacturer, carbon parts sourcing, aerospace composites", "karbon fiber, kompozit malzeme, kompozit üretim, havacılık kompozit"], ["Overseas exhibitors and Country Pavilions", "exclusive distributor, brand agent, master distributor", "Türkiye distribütörü, yetkili distribütör, marka temsilcisi"], ["*", "importer, distributor, dealer, wholesaler, sourcing", "ithalatçı, distribütör, bayi, toptancı, satın alma"]], "TIMTOS": [["Metal Cutting Machine Tools", "CNC machine distributor, machine tool dealer, machining center, CNC lathe, job shop, automotive parts manufacturer, mould maker", "CNC tezgah distribütörü, takım tezgahı bayi, işleme merkezi, CNC torna, talaşlı imalat atölyesi, otomotiv yan sanayi, kalıphane"], ["Metal Forming Machinery, Casting and Forging Equipment", "press machine distributor, metal forming, stamping, forging, foundry, die casting", "pres makinesi, metal şekillendirme, sac presleme, dövme, döküm, dökümhane, basınçlı döküm"], ["Sheet, Tube & Wire Processing", "sheet metal fabrication, press brake, tube bending, wire processing, steel construction", "sac işleme, abkant pres, boru büküm, tel işleme, çelik konstrüksiyon, metal mobilya"], ["Laser Technology", "laser cutting machine distributor, fiber laser, laser cutting service, laser marking", "lazer kesim makinesi, fiber lazer, lazer kesim hizmeti, lazer markalama"], ["Welding and Surface Technology", "welding equipment distributor, welding robot, shipyard, surface treatment, coating, plating", "kaynak makinesi bayi, kaynak robotu, tersane, yüzey işlem, boya, kaplama"], ["Cutting Tools and Accessories", "cutting tools distributor, carbide inserts, tool holder, industrial supplies", "kesici takım distribütörü, karbür uç, takım tutucu, endüstriyel sarf malzeme, hırdavat"], ["Machine Tool Parts", "machine tool manufacturer, spindle, ball screw, linear guide, CNC retrofit, machine maintenance", "takım tezgahı üreticisi, iş mili, vidalı mil, lineer ray, CNC retrofit, tezgah bakım"], ["Inspection, Measuring Instruments", "metrology distributor, CMM, measuring instruments, calibration laboratory, quality control", "ölçüm aletleri distribütörü, CMM, metroloji, kalibrasyon laboratuvarı, kalite kontrol"], ["Control Systems", "CNC controller, PLC, servo motor, motion control, system integrator", "CNC kontrol ünitesi, PLC, servo motor, hareket kontrol, sistem entegratörü"], ["Industrial AI & Digital Ecosystem", "MES, industrial software, digital factory, predictive maintenance, Industry 4.0 consultant", "MES yazılımı, endüstriyel yazılım, dijital fabrika, kestirimci bakım, Endüstri 4.0 danışmanlık"], ["Robotics & Automation", "robot integrator, machine tending, factory automation, cobot distributor", "robot entegratörü, tezgah besleme, fabrika otomasyonu, cobot distribütörü"], ["Innovative Technology, Additive Manufacturing", "3D printer distributor, metal additive manufacturing, rapid prototyping, aerospace, defense", "3D yazıcı distribütörü, metal eklemeli imalat, hızlı prototipleme, havacılık, savunma sanayi"], ["*", "importer, distributor, dealer, authorized representative, sourcing", "ithalatçı, distribütör, bayi, Türkiye temsilcisi, satın alma"]], "DG Taiwan": [["IP and Licensed Products", "licensing agent, licensee, licensed merchandise distributor, character goods, toy retailer, pop culture store", "lisans ajansı, lisanslı ürün distribütörü, karakter ürünleri, oyuncak mağazası, hediyelik eşya mağazası"], ["Creative Gifts & Stationery", "stationery wholesaler, stationery chain, gift shop, bookstore chain, promotional products, corporate gifts, museum shop", "kırtasiye toptan, kırtasiye zinciri, hediyelik eşya mağazası, kitabevi zinciri, promosyon ürünleri, kurumsal hediye, müze mağazası"], ["Home Décor", "home décor retailer, home goods chain, concept store, interior designer, hotel procurement", "ev dekorasyon mağazası, ev aksesuarları, konsept mağaza, iç mimar, otel satın alma"], ["Sustainable Design & Packaging", "sustainable packaging, eco-friendly products, packaging buyer, recycled materials, zero waste store", "sürdürülebilir ambalaj, çevre dostu ürünler, ambalaj satın alma, geri dönüştürülmüş malzeme, sıfır atık mağaza"], ["Smart Living", "smart home distributor, small appliances, consumer electronics retailer, e-commerce", "akıllı ev ürünleri distribütörü, küçük ev aletleri, teknoloji mağazası, e-ticaret"], ["Creator Lab", "design store, independent brand retailer, crowdfunding, online marketplace, design market organizer", "tasarım mağazası, bağımsız marka, kitle fonlaması, online pazaryeri, tasarım pazarı"], ["National Pavilions & Regional Creative Pavilions", "exclusive distributor, importer, brand agent", "Türkiye distribütörü, ithalatçı, marka temsilcisi"], ["*", "importer, distributor, wholesaler, retail chain buyer, sourcing", "ithalatçı, distribütör, toptancı, zincir mağaza satın alma, tedarik"]], "TAIPEI AMPA": [["Complete & Specialty Vehicles", "vehicle importer, vehicle distributor, special purpose vehicle, ambulance conversion, caravan manufacturer, fleet operator, municipality procurement", "araç ithalatçısı, araç distribütörü, özel amaçlı araç, ambulans dönüşüm, karavan üreticisi, filo şirketi, belediye satın alma"], ["Parts & Components", "auto parts importer, spare parts wholesaler, aftermarket distributor, auto parts retailer, repair shop, OEM supplier", "oto yedek parça ithalatçısı, yedek parça toptancısı, yan sanayi, oto yedek parça mağazası, oto tamir servisi, OEM tedarikçi"], ["Automotive Lighting", "automotive lighting distributor, headlamp, LED car light, tail lamp, commercial vehicle manufacturer", "oto aydınlatma, far, LED far, stop lambası, ticari araç üreticisi"], ["Customizing & Accessories", "car accessories wholesaler, tuning shop, car care products, 4x4 accessories, e-commerce seller", "oto aksesuar toptan, tuning, modifiye, oto bakım ürünleri, 4x4 aksesuar, e-ticaret satıcısı"], ["Tools & Equipment", "garage equipment distributor, workshop tools, diagnostic equipment, car lift, tyre service, vehicle inspection station", "oto servis ekipmanları, atölye aletleri, arıza tespit cihazı, araç lifti, lastik servisi, araç muayene istasyonu"], ["Two-Wheeler Parts & Micromobility", "motorcycle parts importer, motorcycle dealer, scooter spare parts, courier fleet, e-scooter operator", "motosiklet yedek parça ithalatçısı, motosiklet bayi, scooter yedek parça, kurye filosu, elektrikli scooter"], ["Autonomous & Electric Vehicles", "electric vehicle importer, EV manufacturer, autonomous driving, ADAS, logistics fleet, automotive R&D", "elektrikli araç ithalatçısı, elektrikli araç üreticisi, otonom sürüş, ADAS, lojistik filosu, otomotiv Ar-Ge"], ["Mobility Technology", "telematics, fleet management, connected car, car sharing, car rental, mobility platform", "telematik, filo yönetimi, bağlantılı araç, araç paylaşımı, araç kiralama, mobilite platformu"], ["Electric & Powertrain Solutions", "electric motor, inverter, powertrain, Tier 1 supplier, bus manufacturer, EV conversion", "elektrik motoru, invertör, güç aktarma, Tier 1 tedarikçi, otobüs üreticisi, elektrikli dönüşüm"], ["Mobility Energy Solutions", "EV charging operator, charging station, battery, energy storage, charge point installer, parking operator", "şarj operatörü, şarj istasyonu, batarya, enerji depolama, şarj kurulumu, otopark işletmesi"], ["Automobile Electronic Components & Parts", "automotive electronics distributor, sensor, ECU, wiring harness, Tier 1 supplier", "otomotiv elektroniği, sensör, motor beyni (ECU), kablo demeti, Tier 1 tedarikçi"], ["*", "importer, distributor, wholesaler, dealer, sourcing", "ithalatçı, distribütör, toptancı, bayi, satın alma"]]};
+const KW_NOTE={"All Age Fitness": ["Belediye spor tesisleri de alıcıdır.", "Municipal sports centres are buyers too."], "ePaper Pavilion": ["Büyük süpermarket zincirleri ESL alıcısıdır.", "Large supermarket chains buy ESL."], "Bicycle Parts": ["Türk bisiklet üreticileri (ör. Salcano, Kron) parça alıcısıdır.", "Turkish bicycle makers (e.g. Salcano, Kron) buy parts."], "Machine Tool Parts": ["Türk takım tezgahı üreticileri parça alıcısıdır.", "Turkish machine-tool builders buy parts."], "Parts & Components": ["İstanbul'da yedek parça çarşıları var, ör. Ataşehir Yedpa.", "Istanbul has spare-parts trade centres, e.g. Yedpa in Ataşehir."]};
+const kwKey=show=>Object.keys(KW).find(k=>String(show).toUpperCase().startsWith(k.toUpperCase()));
+const kwRows=()=>{ const k=kwKey($('#a-show').value); return k?KW[k]:null; };
+const kwZone=z=>z==='*'?T('Genel (hepsiyle birleşir)','General (combine with any)'):z;
+function renderKW(){
+  const show=$('#a-show').value, rows=show?kwRows():null;
+  $('#a-out').hidden=!rows;
+  $('#a-status').textContent=show&&!rows?T('Bu fuar için hazır liste yok; “Claude ile yeni fuar incele” ile oluştur.','No ready list for this show; use “Analyse a show with Claude”.'):'';
+  if(!rows) return;
+  $('#a-rows').innerHTML=`<tr><th>${T('Ürün grubu','Zone')}</th><th>English keywords</th><th>Türkçe anahtar kelimeler</th><th>${T('Not','Note')}</th></tr>`+
+    rows.map(([z,en,tr])=>`<tr><td><b>${esc(kwZone(z))}</b></td><td class="kw">${esc(en)}</td><td class="kw">${esc(tr)}</td><td class="hint">${esc(KW_NOTE[z]?T(...KW_NOTE[z]):'')}</td></tr>`).join('');
+}
+const kwAoa=()=>[[T('Ürün grubu','Zone'),'English keywords','Türkçe anahtar kelimeler',T('Not','Note')],...(kwRows()||[]).map(([z,en,tr])=>[kwZone(z),en,tr,KW_NOTE[z]?T(...KW_NOTE[z]):''])];
+$('#a-show').addEventListener('change',renderKW);
+$('#a-claude').addEventListener('click',()=>window.open(CLAUDE_URL,'_blank','noopener'));
+$('#a-xlsx').addEventListener('click',async()=>{ const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,aoa(kwAoa()),'Anahtar kelimeler'); $('#a-status').textContent=await saveFile(('Anahtar_kelimeler_'+$('#a-show').value.split(' — ')[0]).replace(/[^\w\-]+/g,'_')+'.xlsx',wb); });
+$('#a-copy').addEventListener('click',()=>copyText(toTSV(kwAoa()),$('#a-status')));
+
+/* ================= B: grade list ================= */
+let B={headers:[],rows:[],map:{},results:[]}; let abort=null;
+const FIELDS=[['company',TL('Firma','Company'),/firma|company|katılımcı|katilimci|name|unvan|şirket|公司|廠商|名稱/i],['country',TL('Ülke','Country'),/ülke|ulke|country|國家/i],['phone',TL('Telefon','Phone'),/tel|phone|電話/i],['brands',TL('Markalar','Brands'),/marka|brand|品牌/i],['web','Web',/web|site|url|網站|網址/i],['email',TL('E-posta','Email'),/mail|e-?posta|信箱/i],['info',TL('Diğer bilgi','Other info (ürün, faaliyet)'),/ürün|urun|product|faaliyet|business|sektör|category|kategori|業務|產品|類別/i],['city',TL('Şehir','City'),/şehir|sehir|^il$|city|城市/i],['contact',TL('Yetkili','Contact person'),/yetkili|contact|ilgili kişi|kişi|ad soyad|聯絡人/i],['title',TL('Görevi','Job title'),/görev|gorev|title|pozisyon|position|職稱/i],['mobile',TL('Cep telefonu','Mobile'),/^cep|mobile|gsm|手機/i],['address',TL('Adres','Address'),/^(adres|address)|地址/i],['source',TL('Kaynak','Source'),/^(kaynak|source)|來源/i]];
+// Separator of a pasted table: tab, then semicolon, then comma (comma only when the first two lines split into the same 3+ columns).
+function sepOf(lines){
+  if(lines[0].includes('\t')) return '\t';
+  if(lines[0].split(';').length>2) return ';';
+  const c0=splitCSV(lines[0],',').length, c1=lines[1]?splitCSV(lines[1],',').length:c0;
+  return c0>=3&&c0===c1?',':null;
+}
+function splitCSV(l,sep){ const out=[]; let cur='',q=false; for(let i=0;i<l.length;i++){ const ch=l[i];
+  if(q){ if(ch==='"'&&l[i+1]==='"'){cur+='"';i++;} else if(ch==='"') q=false; else cur+=ch; }
+  else if(ch==='"') q=true; else if(ch===sep){ out.push(cur); cur=''; } else cur+=ch; } out.push(cur); return out; }
+function parseText(t){
+  const lines=t.split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length) return {headers:[],rows:[]};
+  const sep=sepOf(lines);
+  if(sep){
+    const headers=splitCSV(lines[0],sep).map(h=>h.trim()||'Sütun');
+    return {headers,rows:lines.slice(1).map(l=>{const c=splitCSV(l,sep);return headers.map((_,i)=>(c[i]||'').trim())})};
+  }
+  return {headers:['Firma'],rows:lines.map(l=>[l.trim()])};
+}
+let WB=null;
+function sheetToTable(ws){
+  const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+  const hi=aoa.findIndex(r=>r.filter(c=>String(c).trim()).length>=1);
+  if(hi<0) return {headers:[],rows:[]};
+  const headers=aoa[hi].map((h,i)=>String(h).trim()||('Sütun '+(i+1)));
+  return {headers,rows:aoa.slice(hi+1).filter(r=>r.some(c=>String(c).trim())).map(r=>headers.map((_,i)=>String(r[i]??'').trim()))};
+}
+// A workbook with several sheets: offer them all, start on the one with the most rows.
+async function readFile(f){
+  const buf=await f.arrayBuffer(); WB=XLSX.read(buf,{type:'array'});
+  const names=WB.SheetNames; const sizes=names.map(n=>sheetToTable(WB.Sheets[n]).rows.length);
+  const best=sizes.indexOf(Math.max(...sizes));
+  $('#b-sheet').innerHTML=names.map((n,i)=>`<option value="${i}">${esc(n)} (${sizes[i]})</option>`).join('');
+  $('#b-sheet').value=String(best); $('#b-sheet').hidden=names.length<2; $('#b-sheet-l').hidden=names.length<2;
+  return {...sheetToTable(WB.Sheets[names[best]]),sheets:names.length,sheet:names[best]};
+}
+function showMap(){
+  $('#b-map').hidden=false;
+  $('#b-count').textContent=T(`${B.rows.length} satır ve ${B.headers.length} sütun okundu. Sütun eşleştirmesini kontrol et.`,`${B.rows.length} rows, ${B.headers.length} columns read. Check the column mapping.`);
+  const opts='<option value="">—</option>'+B.headers.map((h,i)=>`<option value="${i}">${esc(h)}</option>`).join('');
+  $('#b-cols').innerHTML=FIELDS.map(([k,l])=>`<div><label for="map-${k}">${l}</label><select id="map-${k}">${opts}</select></div>`).join('');
+  for(const [k,,re] of FIELDS){
+    let idx=B.headers.findIndex(h=>re.test(h)); if(k==='company'&&idx<0) idx=0;
+    const used=FIELDS.filter(([k2])=>k2!==k).map(([k2])=>B.map[k2]);
+    if(idx>=0) $('#map-'+k).value=String(idx);
+  }
+  $('#b-run').disabled=!B.rows.length;
+}
+$('#b-file-btn').addEventListener('click',e=>{ e.preventDefault(); $('#b-file').click(); });
+$('#b-file').addEventListener('change',async e=>{ if(e.target.files[0]) $('#b-file-name').textContent=e.target.files[0].name;
+  const f=e.target.files[0]; if(!f) return;
+  try{ B.foundIds=null; B.local=false; const r=await readFile(f); B.headers=r.headers; B.rows=r.rows; showMap(); $('#b-status').textContent=T('Dosya okundu: ','File read: ')+f.name+(r.sheets>1?T(` · ${r.sheets} sayfa var, “${r.sheet}” seçildi; başka sayfa için yukarıdan seç`,` · ${r.sheets} sheets, “${r.sheet}” picked; choose another above`):''); autoGrade(); }
+  catch(err){ $('#b-status').textContent=T('Dosya okunamadı. Dosyanın Excel veya CSV olduğundan emin ol.','Could not read the file.'); }
+});
+$('#b-sheet').addEventListener('change',()=>{ if(!WB) return; const n=WB.SheetNames[+$('#b-sheet').value]; const r=sheetToTable(WB.Sheets[n]); B.foundIds=null; B.local=false; B.headers=r.headers; B.rows=r.rows; B.results=[]; showMap(); $('#b-status').textContent=T('Sayfa: ','Sheet: ')+n; autoGrade(); });
+const isTable=t=>{ const l=t.split(/\r?\n/).filter(x=>x.trim()); return l.length>0&&!!sepOf(l); };
+function splitChunks(t,max){
+  const blocks=t.split(/\n\s*\n/); const out=[]; let cur='';
+  const push=s=>{ if(cur.length+s.length+2>max&&cur){ out.push(cur); cur=''; } cur+=(cur?'\n\n':'')+s; };
+  for(const b of blocks){ if(b.length<=max) push(b); else { for(const line of b.split('\n')) push(line); } }
+  if(cur.trim()) out.push(cur); return out;
+}
+let xabort=null;
+async function extractWithClaude(text,p){
+  const chunks=splitChunks(text,9000);
+  xabort=new AbortController(); $('#'+p+'-read').disabled=true; $('#'+p+'-xstop').hidden=false; $('#'+p+'-bar').hidden=false;
+  const found=[]; let done=0;
+  const bar=()=>{ $('#'+p+'-bar i').style.width=(done/chunks.length*100)+'%'; $('#'+p+'-status').textContent=T(`Claude firmaları ayıklıyor… ${done}/${chunks.length} parça · ${found.length} firma`,`Claude is extracting companies… ${done}/${chunks.length} parts · ${found.length} companies`); };
+  bar();
+  const one=async c=>{
+    const prompt=`Below is text copied from a trade fair exhibitor list, a member list, a business directory or search results (web page, PDF or app). It may be messy: one company can take several lines (name, stand/booth number, hall, country, brands, phone, website, product categories), and there may be menu text, filters, page numbers or cookie notices.
+Extract every company (exhibitor/member) in it. Ignore navigation and other page text. Do not invent anything: leave a field empty if it is not in the text. The text may start or end in the middle of a company: still include it with what is there.
+Fields: company (full name as written), country, city, phone, email, web, contact (contact person's full name, if given), title (that person's job title), brands (brands it shows/represents, comma separated; a brand in brackets after the name counts), info (products or activity, short; leave out stand numbers).
+Return ONLY a JSON array: [{"company":"","country":"","city":"","phone":"","email":"","web":"","contact":"","title":"","brands":"","info":""}]
+
+TEXT:
+${c}`;
+    try{ const arr=await sample.json(prompt,{signal:xabort.signal,modelTier:'default'}); if(Array.isArray(arr)) found.push(...arr.filter(x=>x&&String(x.company||'').trim())); }
+    catch(e){ if(e.code==='cancelled'||e.code==='not_granted') throw e; }
+    done++; bar();
+  };
+  try{ let k=0; const w=async()=>{ while(k<chunks.length) await one(chunks[k++]); }; await Promise.all([w(),w(),w()]); }
+  catch(e){ $('#'+p+'-status').textContent=e.code==='not_granted'?T('Claude\'a izin verilmedi','Claude access not granted'):T('Durduruldu','Stopped'); }
+  finally{ $('#'+p+'-read').disabled=false; $('#'+p+'-xstop').hidden=true; $('#'+p+'-bar').hidden=true; }
+  const seen=new Set(); const uniq=found.filter(x=>{ const k=String(x.company).toLocaleLowerCase('tr').replace(/\W+/g,''); if(seen.has(k)) return false; seen.add(k); return true; });
+  return uniq;
+}
+$('#b-xstop').addEventListener('click',()=>xabort&&xabort.abort());
+
+$('#b-read').addEventListener('click',async()=>{
+  const text=$('#b-text').value;
+  if(!text.trim()){ if(B.rows.length){ autoGrade(); return; } $('#b-status').textContent=T('Önce dosya seç veya listeyi yapıştır','Choose a file or paste a list first'); return; }
+  if(isTable(text)||!sample){ /* no AI: tables, or one company per line */ B.foundIds=null; B.local=false; const r=parseText(text); B.headers=r.headers; B.rows=r.rows; showMap(); autoGrade(); return; }
+  B.foundIds=null; B.local=false; const list=await extractWithClaude(text,'b');
+  if(!list.length){ $('#b-status').textContent=T('Firma bulunamadı','No companies found'); return; }
+  B.headers=['Firma','Ülke','Telefon','Markalar','Web','Ürün / Faaliyet'];
+  B.rows=list.map(x=>[x.company,x.country,x.phone,x.brands,x.web,x.info].map(v=>String(v??'').trim()));
+  showMap();
+  $('#b-status').textContent=T(`Claude ${B.rows.length} firma buldu. Puanlama başlıyor.`,`Claude found ${B.rows.length} companies: grading starts now.`);
+  renderPreview(); autoGrade();
+});
+function autoGrade(){
+  if(!B.rows.length) return;
+  if(!$('#b-run').disabled){ $('#b-run').click(); return; }
+  B.results=[]; B.tick=null; renderPreview();
+  $('#b-status').textContent=T(`${B.rows.length} firma okundu ve aşağıda listelendi. Puanlama için sayfayı claude.ai'de aç.`,`${B.rows.length} companies read and listed below. To grade them, open the page on claude.ai.`);
+}
+function renderPreview(){
+  $('#b-out').hidden=false; $('#b-chips').innerHTML='';
+  $('#b-tbl').innerHTML='<tr>'+B.headers.map(h=>`<th>${esc(h)}</th>`).join('')+'</tr>'+B.rows.map(r=>'<tr>'+r.map(c=>`<td>${esc(c)}</td>`).join('')+'</tr>').join('');
+}
+
+const LABEL={HIGH:TL('Yüksek','High'),MEDIUM:TL('Orta','Medium'),NORMAL:'Normal',IMPORTER:TL('İthalatçı','Importer'),MAKER:TL('Üretici alıcı','Maker buyer'),PARTNER:TL('Ortak','Partner'),CHECK:TL('Kontrol','Check'),EXCLUDE:TL('Hariç','Exclude')};
+const ORDER=['HIGH','MEDIUM','NORMAL','IMPORTER','MAKER','PARTNER','CHECK','EXCLUDE'];
+const AUTO_TICK=['HIGH','MEDIUM','NORMAL'];
+const isTR=c=>!c||/t[uü]rk|turkey/i.test(c);
+const p10=p=>String(p||'').replace(/\D/g,'').slice(-10);
+// What a Turkish manufacturer must make to count as a buyer, per Taiwan show (else it may be a competitor).
+const MAKER_RULE={
+ 'TIMTOS':'Turkish makers of metal parts, moulds, machinery, automotive/defence/white-goods parts BUY machine tools, cutting tools and machine parts: MAKER. Only Turkish machine-tool builders are competitors (EXCLUDE), and even they buy machine tool parts and controllers.',
+ 'TAIPEI CYCLE':'Turkish bicycle and e-bike makers/assemblers BUY parts, components and accessories: MAKER. Only makers of the same parts or accessories are competitors.',
+ 'TAIPEI AMPA':'Turkish vehicle makers, automotive suppliers (yan sanayi), bus/truck/special vehicle builders and EV makers BUY parts, electronics, lighting and powertrain: MAKER. Only makers of the same aftermarket parts or accessories are competitors.',
+ 'DG Taiwan':'Turkish gift, stationery and housewares makers are mostly competitors; packaging buyers (brands, food companies) are MAKER for packaging zones.',
+ 'TaiSPO':'Turkish gym equipment makers are competitors; Turkish sports brands that source products or components are MAKER.',
+ 'COMPUTEX':'Turkish makers of machines, panels, vehicles, defence electronics, medical devices or appliances BUY industrial PCs, embedded boards, components, networking and storage: MAKER. Only makers of the same computer products are competitors.',
+ 'FOOD TAIPEI':'Turkish food producers BUY food processing machinery and packaging: MAKER. Food producers of the same food products are competitors only for the food zones.',
+ 'MEDICAL TAIWAN':'Turkish medical device makers BUY components, accessories and consumables: MAKER. Only makers of the same finished devices are competitors.',
+ 'TADTE':'Turkish defence and aerospace companies BUY components, electronics and sub-systems: MAKER.',
+ 'TAITRONICS':'Turkish makers of electronics, appliances, machines and vehicles BUY components and modules: MAKER. Only makers of the same components are competitors.',
+ 'Energy Taiwan':'Turkish EPC firms, panel/inverter installers, utilities and water companies BUY equipment: MAKER. Only makers of the same equipment are competitors.'};
+const makerRule=show=>{ const k=Object.keys(MAKER_RULE).find(k=>String(show).toUpperCase().startsWith(k.toUpperCase())); return k?MAKER_RULE[k]:'A Turkish manufacturer that USES what this show sells (parts, components, machines, equipment, electronics) is MAKER; only one that makes the same finished products as the Taiwanese exhibitors is a competitor (EXCLUDE).'; };
+// Shared Taiwanese brand list (db config/twbrands); a starter list until someone saves one.
+const TW_START=['Acer','Advantech','AirTAC','ASUS','Axiomtek','BenQ','Cervoz','Cincoze','Delta Electronics','D-Link','Durabook','Dyaco','Edimax','Fatek','Giant ?','Gigabyte','GW Instek','HIWIN','Innodisk','Johnson Health Tech','Kenda','KMC ?','Lutron ?','Maxxis','Merida','Moxa','MSI ?','Neousys','Pintek','Prodigit','RuggON','Silicon Power','Sintrones','Syntec','TBI Motion','Tenmars','Transcend','Zyxel'];
+let TW=[...TW_START];
+// A brand ending with " ?" is a common word or shared with a non-Taiwanese brand (Giant, Lutron…): a match is only shown as unverified (?).
+const AMBIG_DEFAULT=new Set(['giant','kmc','lutron','msi','delta']);
+const twName=b=>String(b).replace(/\s*\?\s*$/,'').trim();
+const isAmbig=b=>/\?\s*$/.test(String(b))||AMBIG_DEFAULT.has(norm(twName(b)));
+function twAll(text){ const t='-'+norm(text)+'-'; return TW.filter(b=>{ const k=norm(twName(b)); return k&&t.includes('-'+k+'-'); }); }
+const twMatches=text=>twAll(text).filter(b=>!isAmbig(b)).map(twName);
+const twAmbig=text=>twAll(text).filter(isAmbig).map(twName);
+// In a company name only the part in brackets is a brand: "KOLAT MOTOR (FALCON)" → FALCON; "GIANT YAPI" → nothing.
+const bracketed=name=>(String(name||'').match(/\(([^)]*)\)/g)||[]).map(x=>x.slice(1,-1)).join(' , ');
+function renderTW(){ const ed=!!(db&&BRANDS_EDITABLE); $('#b-tw-text').readOnly=!ed; $('#b-tw-save').hidden=!ed; $('#b-tw-text').value=TW.join('\n'); $('#b-tw-n').textContent=`${TW.length} `+T('marka','brands'); }
+$('#b-tw-save').addEventListener('click',async()=>{
+  const list=[...new Set($('#b-tw-text').value.split(/\n/).map(x=>x.trim()).filter(Boolean))];
+  if(!db){ TW=list; renderTW(); $('#b-tw-status').textContent=T('Bu görünümde sadece bu oturum için kaydedildi','Saved for this session only'); return; }
+  try{ await db.collection('config').doc('twbrands').set({list,by:me(),at:new Date().toISOString()}); $('#b-tw-status').textContent=T('Kaydedildi','Saved'); }
+  catch(e){ $('#b-tw-status').textContent=T('Kaydedilemedi: ','Not saved: ')+(e.code||e.message); }
+});
+
+$('#b-run').addEventListener('click',async()=>{
+  for(const [k] of FIELDS){ const v=$('#map-'+k).value; B.map[k]=v===''?null:+v; }
+  const g=(r,k)=>B.map[k]==null?'':r[B.map[k]];
+  // phone matching: foreign exhibitors with +90 phones -> Turkish company
+  const trByPhone={}; B.rows.forEach((r,i)=>{ if(isTR(g(r,'country'))) for(const p of String(g(r,'phone')).split(/[;,\/]/)){ const k=p10(p); if(k.length===10) (trByPhone[k]=trByPhone[k]||[]).push(i);} });
+  const extra={}; let matched=0;
+  B.rows.forEach(r=>{ if(isTR(g(r,'country'))) return; for(const p of String(g(r,'phone')).split(/[;,\/]/)){ if(!/(^|\D)90\d{10}|\+90/.test(p.replace(/\s/g,''))) continue; const k=p10(p); (trByPhone[k]||[]).forEach(i=>{(extra[i]=extra[i]||[]).push(`${g(r,'company')}${g(r,'brands')?' ['+g(r,'brands')+']':''} (${g(r,'country')})`); matched++;}); } });
+  B.results=B.rows.map((r,i)=>isTR(g(r,'country'))?null:{priority:'EXCLUDE',taiwan_brands:[],tb_unverified:[],reason_tr:'Yabancı katılımcı',reason_en:'Foreign exhibitor',repr:[]});
+  const todo=B.rows.map((r,i)=>i).filter(i=>!B.results[i]);
+  const show=$('#b-show').value.trim(), src=$('#b-src').value.trim();
+  if(!show){ $('#b-status').textContent=T('Önce hedef fuarı seç','Choose the target show first'); $('#b-show').focus(); return; }
+  B.tick=null;
+  for(const i of todo){ const row=B.rows[i];
+    const srcs=[g(row,'brands'),bracketed(g(row,'company')),...(extra[i]||[])];
+    const tb=[...new Set(srcs.flatMap(twMatches))]; const amb=[...new Set(srcs.flatMap(twAmbig))].filter(b=>!tb.includes(b));
+    B.results[i]={...gradeByRules(g(row,'company'),String(g(row,'info')||'')+' '+String(g(row,'brands')||''),tb,extra[i]||[]),taiwan_brands:tb,tb_unverified:amb,repr:extra[i]||[]};
+  }
+  B.tick=B.results.map(r=>!!r&&AUTO_TICK.includes(r.priority));
+  $('#b-run').disabled=false; renderB();
+  $('#b-status').textContent=T(`Tamamlandı · ${B.rows.length-nExcl()} firma listede, ${nExcl()} çıkarıldı${matched?` · ${matched} telefon eşleşmesi`:''}`,`Done · ${B.rows.length-nExcl()} kept, ${nExcl()} removed${matched?` · ${matched} phone matches`:''}`);
+});
+// Grading by rules (no AI): Taiwanese brands on the office list first, then words in the company name and activity.
+const fold=x=>String(x||'').toLocaleLowerCase('tr').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/ı/g,'i');
+const RX_EXCL=/\b(dernegi?|federasyonu?|vakfi|odasi|birligi|fuarcilik|fuar|medya|dergisi?|yayincilik|yayinlari|gazetesi?|televizyon|radyo|akaryakit|association|federation|chamber|magazine|media|publishing)\b/;
+const RX_PART=/\b(turkiye|turkey|istanbul) (subesi|irtibat|ofisi|office|branch)\b|\b(subesi|irtibat burosu|branch office)\b/;
+const RX_IMP=/(ithalat|ithal\b|ihracat|dis ticaret|distrib|\bbayi|temsilci|import|export|trading|toptan|wholesale|tedarik|supply|pazarlama)/;
+const RX_MAKE=/(uretim|uretici|imalat|fabrika|manufactur|production|factory|makina sanayi)/;
+function gradeByRules(company,info,tb,repr){
+  const c=fold(company), t=c+' '+fold(info), hit=re=>{ const m=t.match(re); return m?m[0].trim():''; };
+  let h;
+  if(h=hit(RX_EXCL)) return {priority:'EXCLUDE',reason_tr:`“${h}” geçiyor: dernek, medya veya fuar`,reason_en:`Contains “${h}”: association, media or fair`};
+  if(tb.length&&/\b(turkiye|turkey)\b/.test(c)&&tb.some(b=>c.includes(fold(b)))) return {priority:'PARTNER',reason_tr:'Tayvan markasının Türkiye şubesi olabilir',reason_en:'May be the Turkish branch of a Taiwanese brand'};
+  if(h=hit(RX_PART)) return {priority:'PARTNER',reason_tr:`“${h}”: yabancı firmanın şubesi olabilir`,reason_en:`“${h}”: may be a foreign company's branch`};
+  if(tb.length>=3) return {priority:'HIGH',reason_tr:`${tb.length} Tayvan markası`,reason_en:`${tb.length} Taiwanese brands`};
+  if(tb.length===2) return {priority:'MEDIUM',reason_tr:'2 Tayvan markası',reason_en:'2 Taiwanese brands'};
+  if(tb.length===1) return {priority:'NORMAL',reason_tr:'1 Tayvan markası',reason_en:'1 Taiwanese brand'};
+  if(h=hit(RX_IMP)) return {priority:'IMPORTER',reason_tr:`“${h}” geçiyor: ithalatçı veya bayi`,reason_en:`Contains “${h}”: importer or dealer`};
+  if(h=hit(RX_MAKE)) return {priority:'CHECK',reason_tr:'Üretici: bu fuarın ürününü kullanıyor mu, rakip mi? Kontrol et',reason_en:'Maker: does it use this show\'s products or compete? Check'};
+  return {priority:'CHECK',reason_tr:'Bilgi yetersiz; kontrol et',reason_en:'Not enough information; check'};
+}
+$('#b-tbl').addEventListener('change',e=>{ const i=e.target.dataset.tick; if(i==null) return; B.tick[+i]=e.target.checked; });
+$('#b-stop').addEventListener('click',()=>abort&&abort.abort());
+
+const SHOWN=['HIGH','MEDIUM','NORMAL','IMPORTER','PARTNER','CHECK'];
+const tbText=r=>[...(r?.taiwan_brands||[]),...(r?.tb_unverified||[]).map(b=>b+' (?)')].join(', ');
+const nExcl=()=>B.results.filter(r=>r&&r.priority==='EXCLUDE').length;
+function sortedIdx(){ return B.rows.map((_,i)=>i).filter(i=>!(B.results[i]&&B.results[i].priority==='EXCLUDE')).sort((a,b)=>{const ra=B.results[a],rb=B.results[b];const oa=ra?ORDER.indexOf(ra.priority):9,ob=rb?ORDER.indexOf(rb.priority):9;return oa-ob||((rb?.taiwan_brands||[]).length-(ra?.taiwan_brands||[]).length)}); }
+function renderB(){
+  $('#b-out').hidden=false; $('#b-run').hidden=false; $('#b-copy').hidden=false;
+  const cnt={}; B.results.forEach(r=>{ if(r) cnt[r.priority]=(cnt[r.priority]||0)+1; });
+  $('#b-chips').innerHTML=`<a href="#b-rules" class="hint" style="align-self:center" onclick="document.getElementById('b-rules').open=true">? ${T('Kurallar','Rules')}</a>`+SHOWN.map(p=>`<div class="chip"><span class="pill p-${p}">${LABEL[p]}</span><b>${cnt[p]||0}</b></div>`).join('')+(nExcl()?`<p class="hint" style="align-self:center">${T(`${nExcl()} firma listeden çıkarıldı (üretici, şube, yabancı katılımcı vb.)`,`${nExcl()} companies removed (makers, branches, foreign exhibitors…)`)}</p>`:'');
+  const ci=B.map.company??0;
+  const tk=!!B.tick;
+  $('#b-tbl').innerHTML='<tr>'+(tk?`<th title="${T('İndirilecek firmalar','Companies to download')}">${T('Seç','Pick')}</th>`:'')+`<th>${T('Puan','Grade')}</th><th>${T('Firma','Company')}</th><th>${T('Tayvan markaları','Taiwanese brands')}</th><th>${T('Neden','Reason')}</th>`+B.headers.map((h,i)=>i===ci?'':`<th>${esc(h)}</th>`).join('')+'</tr>'+
+    sortedIdx().map(i=>{const r=B.results[i];const row=B.rows[i];return `<tr>${tk?`<td><input type="checkbox" data-tick="${i}" ${B.tick[i]?'checked':''} aria-label="${T('Ekle','Add')}"></td>`:''}<td>${r?`<span class="pill p-${r.priority}">${LABEL[r.priority]||r.priority}</span>`:'…'}</td><td><b>${esc(row[ci])}</b>${r&&r.repr&&r.repr.length?`<br><span class="hint">${T('+90 eşleşme','+90 match')}: ${esc(r.repr.join(', '))}</span>`:''}</td><td>${esc(tbText(r))}</td><td>${esc(RS(r))}</td>`+row.map((c,j)=>j===ci?'':`<td><div class="cl" title="${esc(c)}">${esc(c)}</div></td>`).join('')+'</tr>';}).join('');
+}
+function bRows(onlyTicked){
+  const ci=B.map.company??0;
+  const head=[T('Puan','Grade'),T('Firma','Company'),T('Tayvan markaları (listede)','Taiwanese brands (on list)'),'Tayvan marka sayısı',T('Doğrulanmamış Tayvan markaları','Unverified'),'Neden','Reason',T('+90 eşleşme','Phone match'),...B.headers.filter((_,i)=>i!==ci)];
+  return [head,...sortedIdx().filter(i=>!onlyTicked||(B.tick&&B.tick[i])).map(i=>{const r=B.results[i]||{};const row=B.rows[i];return [LABEL[r.priority]||'',row[ci],(r.taiwan_brands||[]).join(', '),(r.taiwan_brands||[]).length,(r.tb_unverified||[]).join(', '),r.reason_tr||'',r.reason_en||'',(r.repr||[]).join(', '),...row.filter((_,j)=>j!==ci)];})];
+}
+$('#b-xlsx').addEventListener('click',async()=>{
+  const wb=XLSX.utils.book_new();
+  const cnt={}; B.results.forEach(r=>{ if(r) cnt[r.priority]=(cnt[r.priority]||0)+1; });
+  XLSX.utils.book_append_sheet(wb,aoa([[T('Tayvan fuarı','Taiwan show'),$('#b-show').value],[T('Liste kaynağı','Source'),$('#b-src').value],[T('Tarih','Date'),new Date().toISOString().slice(0,10)],[T('Hazırlayan','By'),me()],[],[T('Puan','Grade'),T('Firma sayısı','Companies')],...SHOWN.map(p=>[LABEL[p],cnt[p]||0]),[T('Çıkarılan','Removed'),cnt.EXCLUDE||0],[],[T(`Tayvan marka sayısı ofisin Tayvan marka listesiyle (${TW.length} marka) sayıldı; “(?)” olanlar Claude'un tahmini, puana sayılmadı.`,`Taiwanese brands counted against the office list (${TW.length} brands); “(?)” = Claude's guess, not counted.`)]]),'Özet');
+  XLSX.utils.book_append_sheet(wb,aoa(bRows($('#b-xlsx-tick').checked)),'Puanlama');
+  $('#b-status').textContent=await saveFile(('Alicilar_'+$('#b-show').value).replace(/[^\w\-]+/g,'_').slice(0,60)+'.xlsx',wb);
+});
+$('#b-copy').addEventListener('click',()=>copyText(toTSV(bRows()),$('#b-status')));
+
+/* ================= C: history (shared db) ================= */
+const fmt=s=>{try{return new Date(s).toLocaleString('tr-TR',{dateStyle:'short',timeStyle:'short'});}catch(e){return s;}};
+let HA=[];
+
+/* ================= F: buyers found (shared db) ================= */
+const norm=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/ı/g,'i').toLowerCase().replace(/\b(san|tic|ve|ltd|sti|a\.?s|as|ith|ihr|dis|ic|limited|sirketi|anonim|co|inc|llc)\b\.?/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+const showKey=s=>norm(String(s).split(' — ')[0]).slice(0,40)||'x';
+const docId=(show,c)=>(showKey(show)+'__'+(norm(c).slice(0,120)||'x'));
+function objsFromTable(headers,rows){
+  const idx={}; for(const [k,,re] of FIELDS){ let i=headers.findIndex(h=>re.test(h)); if(k==='company'&&i<0) i=0; idx[k]=i; }
+  if(idx.contact===idx.company) idx.contact=-1;
+  return rows.map(r=>Object.fromEntries(FIELDS.map(([k])=>[k,idx[k]>=0?(r[idx[k]]||''):'']))).filter(x=>String(x.company).trim());
+}
+async function pool(items,n,fn){ let k=0; await Promise.all(Array.from({length:n},async()=>{ while(k<items.length){ const i=k++; await fn(items[i],i); } })); }
+
+/* ---- one by one: business cards and the form, kept only in this browser ---- */
+const FF=['company','contact','title','email','phone','mobile','web','address','city','info'];
+let LOCAL=[], editIdx=null;
+try{ LOCAL=JSON.parse(localStorage.getItem('tab_local')||'[]'); if(!Array.isArray(LOCAL)) LOCAL=[]; }catch(e){ LOCAL=[]; }
+const saveLocal=()=>{ try{ localStorage.setItem('tab_local',JSON.stringify(LOCAL)); }catch(e){} };
+function fillForm(x){ for(const k of FF) $('#ff-'+k).value=(x[k]||''); }
+function resetForm(){ editIdx=null; fillForm({}); $('#f-legend').textContent=T('Firma ekle','Add a company'); $('#ff-cancel').hidden=true; $('#ff-warn').textContent=''; $('#ff-warn').dataset.ack=''; }
+function addLocal(v){ const k=norm(v.company); const i=LOCAL.findIndex(x=>norm(x.company)===k);
+  if(i>=0){ LOCAL[i]={...LOCAL[i],...Object.fromEntries(Object.entries(v).filter(([,x])=>x))}; return false; }
+  LOCAL.push(v); return true; }
+function renderLocal(){
+  $('#l-count').textContent=LOCAL.length?T(`(${LOCAL.length} firma)`,`(${LOCAL.length} companies)`):'';
+  $('#l-grade').disabled=!LOCAL.length; $('#l-clear').disabled=!LOCAL.length;
+  $('#l-tbl').innerHTML=`<tr><th>${T('Firma','Company')}</th><th>${T('Yetkili','Contact')}</th><th>${T('Görevi','Job title')}</th><th>${T('E-posta','Email')}</th><th>${T('Telefon','Phone')}</th><th>${T('Şehir','City')}</th><th>${T('Kaynak','Source')}</th><th></th></tr>`+
+    (LOCAL.length?LOCAL.map((x,i)=>`<tr><td><b>${esc(x.company)}</b></td><td>${esc(x.contact)}</td><td>${esc(x.title)}</td><td>${esc(x.email)}</td><td>${esc(x.phone||x.mobile)}</td><td>${esc(x.city)}</td><td><span class="hint">${esc(x.source)}</span></td><td style="white-space:nowrap"><button data-ledit="${i}" title="${T('Formda aç','Open in the form')}" style="padding:2px 8px">✎</button> <button data-ldel="${i}" title="${T('Sil','Delete')}" style="padding:2px 8px">×</button></td></tr>`).join('')
+      :`<tr><td colspan="8" class="hint">${T('Henüz firma yok. Formu doldur veya kartvizit fotoğrafı seç.','No companies yet. Fill in the form or pick business card photos.')}</td></tr>`);
+}
+$('#ff-cancel').addEventListener('click',e=>{ e.preventDefault(); resetForm(); });
+$('#ff-save').addEventListener('click',e=>{
+  e.preventDefault();
+  const v=Object.fromEntries(FF.map(k=>[k,$('#ff-'+k).value.trim().slice(0,300)]));
+  if(!v.company){ $('#ff-company').focus(); $('#ff-warn').textContent=T('Firma adı gerekli','Company name is required'); return; }
+  if(v.email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email)){ $('#ff-email').focus(); $('#ff-warn').textContent=T('E-posta adresi geçersiz görünüyor','The email looks invalid'); return; }
+  const missing=[['contact',T('Yetkili','Contact')],['title',T('Görevi','Job title')],['email',T('E-posta','Email')],['city',T('Şehir','City')]].filter(([k])=>!v[k]).map(([,l])=>l);
+  if(missing.length&&$('#ff-warn').dataset.ack!==missing.join()){ $('#ff-warn').dataset.ack=missing.join(); $('#ff-warn').innerHTML=`<span class="miss">${T('Eksik','Missing')}</span> ${missing.join(', ')}. `+T('Bulabilirsen doldur, bulamazsan düğmeye bir kez daha bas.','Fill them in if you can, or press the button again to add anyway.'); return; }
+  v.source=$('#f-src').value.trim().slice(0,200); v.country='Türkiye';
+  if(editIdx!=null){ LOCAL[editIdx]={...LOCAL[editIdx],...v}; $('#f-status').textContent=T('Güncellendi: ','Updated: ')+v.company; }
+  else $('#f-status').textContent=(addLocal(v)?T('Eklendi: ','Added: '):T('Zaten listedeydi, bilgiler güncellendi: ','Already listed, details updated: '))+v.company;
+  saveLocal(); resetForm(); renderLocal(); $('#ff-company').focus();
+});
+$('#l-tbl').addEventListener('click',e=>{
+  const ed=e.target.closest('[data-ledit]'), del=e.target.closest('[data-ldel]');
+  if(ed){ editIdx=+ed.dataset.ledit; const x=LOCAL[editIdx]; fillForm(x); $('#f-src').value=x.source||''; $('#f-legend').textContent=T('Düzenle','Edit')+': '+x.company; $('#ff-cancel').hidden=false; $('#f-form').scrollIntoView({behavior:'smooth',block:'start'}); }
+  if(del){ const i=+del.dataset.ldel; if(!confirm(T(`“${LOCAL[i].company}” listeden silinsin mi?`,`Delete “${LOCAL[i].company}” from the list?`))) return; LOCAL.splice(i,1); saveLocal(); resetForm(); renderLocal(); }
+});
+$('#l-clear').addEventListener('click',()=>{ if(!LOCAL.length||!confirm(T(`${LOCAL.length} firmalık liste silinsin mi? İndirmediysen önce indir.`,`Delete the list of ${LOCAL.length} companies? Download it first if you have not.`))) return; LOCAL=[]; saveLocal(); resetForm(); renderLocal(); });
+$('#l-grade').addEventListener('click',()=>{
+  if(!LOCAL.length) return;
+  if(!need('#b-show','#f-status')) return;
+  B.headers=['Firma','Yetkili','Görevi','E-posta','Telefon','Cep telefonu','Web','Adres','Şehir','Ülke','Ürün / Faaliyet','Kaynak'];
+  B.rows=LOCAL.map(x=>[x.company,x.contact,x.title,x.email,x.phone,x.mobile,x.web,x.address,x.city,x.country||'Türkiye',x.info,x.source].map(v=>String(v??'')));
+  B.results=[]; B.tick=null; B.local=true; WB=null; $('#b-sheet').hidden=true; $('#b-sheet-l').hidden=true; $('#b-file-name').textContent='';
+  if(!$('#b-src').value.trim()) $('#b-src').value=T('Kendi bulduklarımız (kartvizit, arama)','Found by us (cards, search)');
+  showMap(); $('#b-status').textContent=T(`${LOCAL.length} firma puanlanıyor…`,`Grading ${LOCAL.length} companies…`); autoGrade();
+  $('#b-map').scrollIntoView({behavior:'smooth',block:'start'});
+});
+renderLocal();
+/* ---- business card photos: read in this browser with Tesseract.js (nothing is uploaded) ---- */
+const TESS_SRC='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+let tessWorker=null;
+async function getOCR(){
+  if(tessWorker) return tessWorker;
+  if(!window.Tesseract) await loadScript(TESS_SRC);
+  tessWorker=await Tesseract.createWorker(['tur','eng']);
+  return tessWorker;
+}
+const PROVINCES=['Adana','Adıyaman','Afyonkarahisar','Ağrı','Aksaray','Amasya','Ankara','Antalya','Ardahan','Artvin','Aydın','Balıkesir','Bartın','Batman','Bayburt','Bilecik','Bingöl','Bitlis','Bolu','Burdur','Bursa','Çanakkale','Çankırı','Çorum','Denizli','Diyarbakır','Düzce','Edirne','Elazığ','Erzincan','Erzurum','Eskişehir','Gaziantep','Giresun','Gümüşhane','Hakkari','Hatay','Iğdır','Isparta','İstanbul','İzmir','Kahramanmaraş','Karabük','Karaman','Kars','Kastamonu','Kayseri','Kilis','Kırıkkale','Kırklareli','Kırşehir','Kocaeli','Konya','Kütahya','Malatya','Manisa','Mardin','Mersin','Muğla','Muş','Nevşehir','Niğde','Ordu','Osmaniye','Rize','Sakarya','Samsun','Şanlıurfa','Siirt','Sinop','Şırnak','Sivas','Tekirdağ','Tokat','Trabzon','Tunceli','Uşak','Van','Yalova','Yozgat','Zonguldak'];
+const DISTRICT_CITY={gebze:'Kocaeli',dilovasi:'Kocaeli',cayirova:'Kocaeli',izmit:'Kocaeli',nilufer:'Bursa',osmangazi:'Bursa',inegol:'Bursa',cerkezkoy:'Tekirdağ',corlu:'Tekirdağ',ikitelli:'İstanbul',tuzla:'İstanbul',pendik:'İstanbul',sisli:'İstanbul',kadikoy:'İstanbul',umraniye:'İstanbul',atasehir:'İstanbul',maslak:'İstanbul',ostim:'Ankara',sincan:'Ankara',cigli:'İzmir',bornova:'İzmir',kemalpasa:'İzmir'};
+const RX={
+  email:/[a-z0-9._%+-]+\s?@\s?[a-z0-9.-]+\.[a-z]{2,}/i,
+  web:/\b(?:https?:\/\/)?(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:com\.tr|net\.tr|org\.tr|gen\.tr|biz\.tr|com|net|org|tr|eu|de|io)\b(?:\/\S*)?/i,
+  phone:/\+?\d[\d\s.\-()]{8,18}\d/g,
+  fax:/\b(fax|faks|f\s*:)/i,
+  legal:/(\ba\.?\s?ş\b|\ba\.?\s?s\.|\bltd\b|\bşti\b|\bsti\b|\bsan\.|\btic\.|\bsanayi\b|\bticaret\b|\binc\b|\bgmbh\b|\bllc\b|\bco\.|\blimited\b|\bholding\b)/i,
+  title:/(müdür|mudur|müdürü|yönetici|yonetici|direktör|direktor|başkan|baskan|uzman|sorumlu|mühendis|muhendis|temsilci|koordinatör|koordinator|şefi|sefi|kurucu|ortak|satış|satis|satın alma|satin alma|pazarlama|manager|director|engineer|specialist|representative|coordinator|founder|owner|ceo|cto|cfo|sales|purchasing|marketing|export|ihracat)/i,
+  addr:/(mah\.?|mahallesi|cad\.?|caddesi|sok\.?|sokak|sk\.|bulvar|blv\.?|no\s?:|no\.|\bosb\b|organize sanayi|kat\s?:|plaza|sitesi|apt\.?|d\s?:\s?\d)/i
+};
+// Turkish numbers: keep the last 10 digits (OCR often misreads the leading + as 4 or 1); area codes start with 2–5.
+const fmtPhone=d=>{ d=d.replace(/\D/g,''); if(d.length<10||d.length>13) return ''; d=d.slice(-10); if(!/^[2-5]/.test(d)) return ''; return `+90 ${d.slice(0,3)} ${d.slice(3,6)} ${d.slice(6,8)} ${d.slice(8)}`; };
+function parseCard(text,lines){
+  const L=(lines&&lines.length?lines:String(text).split(/\n/).map(t=>({text:t,h:0}))).map(l=>({t:String(l.text||'').replace(/\s+/g,' ').trim(),h:l.h||0})).filter(l=>l.t.length>1);
+  const all=L.map(l=>l.t).join('\n');
+  const v={company:'',contact:'',title:'',email:'',phone:'',mobile:'',web:'',address:'',city:'',country:'',info:''};
+  const used=new Set();
+  const em=all.match(RX.email); if(em) v.email=em[0].replace(/\s/g,'').toLowerCase();
+  for(const [i,l] of L.entries()){ const w=l.t.replace(RX.email,' ').match(RX.web); if(w&&!v.web){ v.web=w[0].replace(/^https?:\/\//i,'').toLowerCase(); } }
+  for(const [i,l] of L.entries()){
+    if(RX.fax.test(l.t)&&!/tel|gsm|cep|mobile/i.test(l.t)) { used.add(i); continue; }
+    const nums=(l.t.replace(RX.email,' ').match(RX.phone)||[]).map(fmtPhone).filter(Boolean);
+    for(const n of nums){ if(n.startsWith('+90 5')){ if(!v.mobile) v.mobile=n; } else if(!v.phone) v.phone=n; }
+    if(nums.length&&l.t.replace(RX.phone,'').replace(/[^a-zçğıöşü]/gi,'').length<8) used.add(i);
+    if(RX.email.test(l.t)||(RX.web.test(l.t)&&l.t.replace(RX.web,'').replace(/[^a-zçğıöşü]/gi,'').length<6)) used.add(i);
+  }
+  const ai=L.findIndex((l,i)=>!used.has(i)&&RX.addr.test(l.t));
+  if(ai>=0){ v.address=L[ai].t; used.add(ai); if(L[ai+1]&&!used.has(ai+1)&&/\d{5}|\//.test(L[ai+1].t)){ v.address+=' '+L[ai+1].t; used.add(ai+1); } }
+  const f=x=>fold(x);
+  const fa=f(v.address||all);
+  v.city=PROVINCES.find(p=>new RegExp('(^|[^a-z])'+f(p)+'([^a-z]|$)').test(fa))||'';
+  if(!v.city){ const k=Object.keys(DISTRICT_CITY).find(k=>fa.includes(k)); if(k) v.city=DISTRICT_CITY[k]; }
+  let ci=L.findIndex((l,i)=>!used.has(i)&&RX.legal.test(l.t));
+  if(ci<0){ const cand=L.map((l,i)=>[l,i]).filter(([l,i])=>!used.has(i)&&!RX.title.test(l.t)&&!/\d/.test(l.t)); if(cand.length&&cand.some(([l])=>l.h)){ cand.sort((a,b)=>b[0].h-a[0].h); ci=cand[0][1]; } }
+  if(ci<0) ci=L.findIndex((l,i)=>!used.has(i)&&!/\d/.test(l.t)&&/[A-ZÇĞİÖŞÜ]{3}/.test(l.t)&&l.t===l.t.toLocaleUpperCase('tr')&&!RX.title.test(l.t)&&!/^dr\.?\s/i.test(l.t)&&l.t.split(' ').length<=6&&!(l.t.split(' ').length<=3&&PROVINCES.some(p=>fold(p)===fold(l.t))));
+  if(ci>=0){ v.company=L[ci].t; used.add(ci); }
+  if(!v.company&&v.email){ const d=v.email.split('@')[1]||''; if(!FREEMAIL.some(m=>d.startsWith(m+'.'))) v.company=d.split('.')[0].toUpperCase(); }
+  const ti=L.findIndex((l,i)=>!used.has(i)&&RX.title.test(l.t)&&l.t.split(' ').length<=7);
+  if(ti>=0){ v.title=L[ti].t; used.add(ti); }
+  const isName=t=>{ const w=t.split(' '); return w.length>=2&&w.length<=4&&!/[\d@:\/]/.test(t)&&w.every(x=>/^[A-ZÇĞİÖŞÜ][a-zçğıöşüA-ZÇĞİÖŞÜ.'-]*$/.test(x))&&!RX.legal.test(t)&&!RX.title.test(t); };
+  const order=ti>=0?[ti-1,ti+1,...L.keys()]:[...L.keys()];
+  const ni=order.find(i=>i>=0&&i<L.length&&!used.has(i)&&isName(L[i].t));
+  if(ni!=null){ v.contact=L[ni].t.split(' ').map(x=>x===x.toUpperCase()&&x.length>2?x[0]+x.slice(1).toLocaleLowerCase('tr'):x).join(' '); used.add(ni); }
+  return v;
+}
+async function readCardLocal(file){
+  const w=await getOCR();
+  const {data}=await w.recognize(file);
+  const lines=(data.lines||[]).map(l=>({text:l.text,h:(l.bbox?l.bbox.y1-l.bbox.y0:0)}));
+  return parseCard(data.text||'',lines);
+}
+$('#ff-photo-btn').addEventListener('click',e=>{ e.preventDefault(); $('#ff-photo').click(); });
+$('#ff-photo').addEventListener('change',async e=>{
+  const files=[...e.target.files].filter(f=>f.type.startsWith('image/')); e.target.value='';
+  if(!files.length) return;
+  $('#ff-photo-btn').disabled=true;
+  try{
+    $('#f-status').textContent=T('Kartvizit okuyucu hazırlanıyor… (ilk seferde biraz sürer)','Getting the card reader ready… (slower the first time)');
+    await getOCR();
+    if(files.length===1){
+      $('#f-status').textContent=T('Kartvizit okunuyor…','Reading the card…');
+      const r=await readCardLocal(files[0]); resetForm(); fillForm(r);
+      $('#f-status').textContent=T('Kartvizit okundu. Alanları kontrol et, sonra “Listeye ekle”.','Card read. Check the fields, then “Add to the list”.');
+      $('#f-form').scrollIntoView({behavior:'smooth',block:'start'});
+    } else {
+      const src=(($('#f-src').value.trim()||'')+' (kartvizit)').trim().slice(0,200);
+      let ok=0, fail=0, dup=0, n=0;
+      for(const f of files){
+        try{ const v=await readCardLocal(f); if(!v.company){ fail++; } else { v.source=src; v.country='Türkiye'; if(addLocal(v)) ok++; else dup++; saveLocal(); renderLocal(); } }catch(err){ fail++; }
+        n++; $('#f-status').textContent=T(`Kartvizitler okunuyor… ${n}/${files.length}`,`Reading cards… ${n}/${files.length}`);
+      }
+      $('#f-status').textContent=T(`${ok} kartvizit eklendi${dup?`, ${dup} zaten vardı`:''}${fail?`, ${fail} okunamadı`:''}. ✎ ile kontrol et.`,`${ok} cards added${dup?`, ${dup} already listed`:''}${fail?`, ${fail} unreadable`:''}. Check them with ✎.`);
+    }
+  }catch(err){ $('#f-status').textContent=T('Kartvizit okuyucu yüklenemedi; internet bağlantısını kontrol et.','The card reader could not load; check the internet connection.'); }
+  finally{ $('#ff-photo-btn').disabled=false; }
+});
+
+/* ---- HubSpot CSV (same columns as the Kartvizit → HubSpot page) ---- */
+try{ const o=localStorage.getItem('ttcOwner'); if(o) $('#b-owner').value=o; }catch(e){}
+$('#b-owner').addEventListener('change',()=>{ try{ localStorage.setItem('ttcOwner',$('#b-owner').value.trim()); }catch(e){} });
+const FREEMAIL=['gmail','hotmail','yahoo','outlook','yandex','icloud','live','msn','mynet','windowslive'];
+const domainOf=x=>{ const w=String(x.web||'').replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].toLowerCase(); if(w) return w; const d=(String(x.email||'').split('@')[1]||'').toLowerCase(); return d&&!FREEMAIL.some(f=>d.startsWith(f+'.'))?d:''; };
+const csvCell=v=>{ v=v==null?'':String(v); return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+// HubSpot CSV builder for the graded list on tab 3. Grade is always in English for HubSpot.
+const GRADE_EN={HIGH:'High',MEDIUM:'Medium',NORMAL:'Normal',IMPORTER:'Importer',MAKER:'Maker buyer',PARTNER:'Partner',CHECK:'Check',EXCLUDE:'Exclude'};
+async function saveHubSpot(list,owner,show,statusEl,ownerEl){
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(owner)){ statusEl.textContent=T('Contact Owner olarak kendi e-postanı yaz','Type your own email as Contact Owner'); ownerEl.focus(); return; }
+  if(!list.length){ statusEl.textContent=T('İndirilecek firma yok; önce firmaları işaretle','No companies to download; tick some first'); return; }
+  const head=['First Name','Last Name','Email','Phone Number','Mobile Phone Number','Job Title','Company Name','Company Domain Name','Website URL','Street Address','City','Country/Region','Contact Owner','Card Source','Taiwan Show','Grade','Taiwanese Brands','Lead Origin','Check Notes'];
+  const rows=[head,...list.map(x=>{
+    const n=String(x.contact||'').trim().split(/\s+/).filter(Boolean); const last=n.length>1?n.pop():''; const first=n.join(' ');
+    const notes=[]; if(!x.contact) notes.push('no name'); if(!x.email) notes.push('no email'); if(!x.title) notes.push('no job title'); if(!x.city) notes.push('no city'); if(!x.grade) notes.push('not graded');
+    return [first,last,x.email,x.phone,x.mobile||'',x.title||'',x.company,domainOf(x),x.web,x.address||'',x.city||'',(!x.country||isTR(x.country))?'Turkey':x.country,owner,x.source,show,GRADE_EN[x.grade]||x.grade||'',(x.tb||[]).join(', '),x.origin==='scan'?'List scan':'Found by office',notes.join('; ')];
+  })];
+  const csv='﻿'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n');
+  const name=('hubspot_'+(show||'list')).replace(/[^\w\-]+/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.csv';
+  if(!downloads){ statusEl.textContent=T('Bu görünümde indirme yapılamıyor','Downloads unavailable here'); return; }
+  try{ await downloads.save({filename:name,data:new Blob([csv],{type:'text/csv;charset=utf-8'})}); statusEl.textContent=T(`İndirildi: ${name} (${list.length} firma)`,`Saved: ${name} (${list.length} companies)`); }
+  catch(e){ statusEl.textContent=T('İndirme iptal edildi','Download not saved'); }
+}
+$('#b-hs').addEventListener('click',()=>{
+  const g=(r,k)=>B.map[k]==null?'':String(r[B.map[k]]||'').trim();
+  const list=sortedIdx().filter(i=>B.tick&&B.tick[i]&&B.results[i]).map(i=>{ const r=B.rows[i], x=B.results[i];
+    return {company:g(r,'company'),contact:g(r,'contact'),title:g(r,'title'),email:g(r,'email'),phone:g(r,'phone'),mobile:g(r,'mobile'),address:g(r,'address'),web:g(r,'web'),city:g(r,'city'),country:g(r,'country'),grade:x.priority,tb:x.taiwan_brands||[],source:g(r,'source')||$('#b-src').value.trim(),origin:B.local?'manual':'scan'}; });
+  saveHubSpot(list,$('#b-owner').value.trim(),$('#b-show').value.split(' — ')[0]||'',$('#b-status'),$('#b-owner'));
+});
+
+/* ===== M: how to get each source's list (shared, editable) ===== */
+const HOW=[['copy',TL('📋 Kopyala','📋 Copy')],['ext',TL('🧩 Eklenti','🧩 Extension')],['ask',TL('✉️ İste','✉️ Ask')],['center',TL('🏢 Merkez','🏢 Office')]];
+const HOW_T={copy:TL('Tek sayfa: kopyala-yapıştır','One page: copy and paste'),ext:TL('Çok sayfa: Instant Data Scraper','Paged: use the extension'),ask:TL('Organizatörden/dernekten iste','Ask the organiser'),center:TL('Ofisteki sorumluya gönder','Send to the office lead')};
+let HOWDB={};
+function renderHow(){ document.querySelectorAll('select.how').forEach(el=>{ const k=el.dataset.k, saved=HOWDB[k], v=saved?saved.v:el.dataset.def;
+  el.innerHTML=HOW.map(([k2,l])=>`<option value="${k2}">${l}</option>`).join('');
+  el.value=v; el.dataset.v=v; el.classList.toggle('guess',!saved);
+  el.title=(HOW_T[v]||'')+(saved?`\n${T('Deneyen','Tried by')}: ${saved.by||'—'} · ${fmt(saved.at)}`:'\n'+T('Tahmin, henüz denenmedi','Guess, not tried yet')); }); }
+document.addEventListener('change',async e=>{ const el=e.target.closest('select.how'); if(!el) return;
+  const v={v:el.value,by:me(),at:new Date().toISOString()}; HOWDB[el.dataset.k]=v; renderHow();
+  if(db){ try{ await db.collection('config').doc('srchow').set({map:HOWDB,by:me(),at:v.at}); }catch(err){} } });
+renderHow();
+function watchHow(){ if(!db) return; try{ db.collection('config').doc('srchow').onSnapshot(d=>{ const v=d&&d.exists!==false&&d.data?d.data():null; if(v&&v.map){ HOWDB=v.map; renderHow(); } },()=>{}); }catch(e){} }
+$('#m-mail-copy').addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText($('#m-mail').value); $('#m-mail-st').textContent=T('Kopyalandı','Copied'); }catch(e){ $('#m-mail').select(); $('#m-mail-st').textContent=T('Ctrl+C ile kopyala','Press Ctrl+C'); } });
+
+function applyLang(l){
+  if(l){ LANG=l; try{ localStorage.setItem('tab_lang',l); }catch(e){} }
+  document.documentElement.dataset.lang=LANG; document.documentElement.lang=LANG;
+  for(const a of ['title','placeholder','aria-label']) document.querySelectorAll(`[data-t-${a}]`).forEach(el=>{ const [tr,en]=el.getAttribute(`data-t-${a}`).split('|'); el.setAttribute(a,T(tr,en)); });
+  document.querySelectorAll('[data-t-text]').forEach(el=>{ const [tr,en]=el.dataset.tText.split('|'); el.textContent=T(tr,en); });
+  document.querySelectorAll('.langsw button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.lang===LANG)));
+  $('#me').placeholder=T('Adın (isteğe bağlı)','Your name (optional)');
+  for(const id of ['#a-show','#b-show']){ const el=$(id); for(const o of el.options){ if(!o.value) o.textContent='— '+T('Fuar seç','Choose a show')+' —'; else { const x=SHOWS.find(x=>showVal(x)===o.value); o.textContent=x?`${x[0]} · ${dateL(x[2])}`:o.value.split(' — ')[0]+T(' (geçmiş)',' (past)'); } } }
+  for(const [k,l] of FIELDS){ const lb=document.querySelector(`label[for="map-${k}"]`); if(lb) lb.textContent=String(l); }
+  $('#f-legend').textContent=editIdx!=null?T('Düzenle','Edit')+': '+(($('#ff-company').value)||''):T('Firma ekle','Add a company'); renderLocal();
+  renderTW(); renderHow();
+  renderKW(); try{ if(B.rows&&B.rows.length) renderB(); }catch(e){}
+}
+document.querySelectorAll('.langsw button').forEach(b=>b.addEventListener('click',()=>applyLang(b.dataset.lang)));
+applyLang();
+</script>
+</body>
+</html>
