@@ -107,7 +107,8 @@ tr.hid td{opacity:.5}
 .stbar .bar2 i{display:block;height:100%;background:var(--bar)}
 select.stsel{padding:4px 6px;font-size:12.5px;border-radius:8px;min-width:150px}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
-.chip{border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-width:110px;background:var(--bg)}
+.chip{border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-width:110px;background:var(--bg);text-align:left;font:inherit;color:inherit}
+button.chip{cursor:pointer}button.chip:hover{border-color:var(--ink,#333)}button.chip.on{outline:2px solid var(--accent,#2a6);outline-offset:-2px}button.chip.on::after{content:' ✓';font-weight:700}
 .chip b{display:block;font:700 22px var(--display);font-variant-numeric:tabular-nums}
 .kw{font-family:var(--mono);font-size:12.5px}
 a{color:var(--mid)}
@@ -263,7 +264,7 @@ button{border-radius:999px}
     <fieldset class="dl">
       <legend><span data-l="tr">Sonucu indir</span><span data-l="en">Download the result</span></legend>
       <div class="btns"><button class="primary" id="b-xlsx"><span data-l="tr">Excel indir</span><span data-l="en">Download Excel</span></button>
-        <label class="hint" style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="b-xlsx-tick"> <span data-l="tr">Sadece işaretli firmalar</span><span data-l="en">Ticked companies only</span></label></div>
+        <label class="hint" style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="b-xlsx-tick"> <span data-l="tr">Sadece işaretli firmalar</span><span data-l="en">Ticked companies only</span></label><b class="hint" id="b-ticked" style="margin:0"></b><button type="button" id="b-untick" style="font-size:12px"><span data-l="tr">İşaretleri kaldır</span><span data-l="en">Untick all</span></button></div>
       <div class="btns"><button id="b-hs"><span data-l="tr">HubSpot CSV indir</span><span data-l="en">Download HubSpot CSV</span></button><label for="b-owner" class="hint" style="margin:0">Contact Owner *</label><input type="text" id="b-owner" placeholder="kendi e-postan" data-t-placeholder="kendi e-postan|your email" style="width:210px;padding:6px 8px"></div>
       <p class="hint" style="margin:0"><span data-l="tr">HubSpot sadece işaretli firmaları alır. Contact Owner = kendi e-postan.</span><span data-l="en">HubSpot takes ticked companies only. Contact Owner = your email.</span></p>
     </fieldset>
@@ -612,7 +613,7 @@ $('#b-run').addEventListener('click',async()=>{
     const tb=[...new Set(srcs.flatMap(twMatches))]; const amb=[...new Set(srcs.flatMap(twAmbig))].filter(b=>!tb.includes(b));
     B.results[i]={...gradeByRules(g(row,'company'),String(g(row,'info')||'')+' '+String(g(row,'brands')||''),tb,extra[i]||[]),taiwan_brands:tb,tb_unverified:amb,repr:extra[i]||[]};
   }
-  B.tick=B.results.map(r=>!!r&&AUTO_TICK.includes(r.priority));
+  B.tick=B.results.map(()=>false);
   $('#b-run').disabled=false; renderB();
   $('#b-status').textContent=T(`Tamamlandı · ${B.rows.length-nExcl()} firma listede, ${nExcl()} çıkarıldı${matched?` · ${matched} telefon eşleşmesi`:''}`,`Done · ${B.rows.length-nExcl()} kept, ${nExcl()} removed${matched?` · ${matched} phone matches`:''}`);
 });
@@ -635,7 +636,21 @@ function gradeByRules(company,info,tb,repr){
   if(h=hit(RX_MAKE)) return {priority:'CHECK',reason_tr:'Üretici: bu fuarın ürününü kullanıyor mu, rakip mi? Kontrol et',reason_en:'Maker: does it use this show\'s products or compete? Check'};
   return {priority:'CHECK',reason_tr:'Bilgi yetersiz; kontrol et',reason_en:'Not enough information; check'};
 }
-$('#b-tbl').addEventListener('change',e=>{ const i=e.target.dataset.tick; if(i==null) return; B.tick[+i]=e.target.checked; });
+$('#b-tbl').addEventListener('change',e=>{ const i=e.target.dataset.tick; if(i==null) return; B.tick[+i]=e.target.checked; syncTicks(); });
+function syncTicks(){ if(!B.tick) return;
+  const n=B.tick.filter((x,i)=>x&&!(B.results[i]&&B.results[i].priority==='EXCLUDE')).length;
+  $('#b-ticked').textContent=T(`${n} firma işaretli`,`${n} companies ticked`);
+  document.querySelectorAll('#b-chips button.chip').forEach(b=>{ const idx=B.results.map((r,i)=>r&&r.priority===b.dataset.gp?i:-1).filter(i=>i>=0); b.classList.toggle('on',idx.length>0&&idx.every(i=>B.tick[i])); }); }
+$('#b-chips').addEventListener('click',e=>{ const b=e.target.closest('button.chip'); if(!b) return; const g=b.dataset.gp;
+  if(!B.tick) B.tick=B.results.map(()=>false);
+  const idx=B.results.map((r,i)=>r&&r.priority===g?i:-1).filter(i=>i>=0); if(!idx.length) return;
+  const on=!idx.every(i=>B.tick[i]); idx.forEach(i=>B.tick[i]=on);
+  if(!$('#b-tbl input[data-tick]')) renderB(); else idx.forEach(i=>{ const c=$(`#b-tbl input[data-tick="${i}"]`); if(c) c.checked=on; });
+  if(on) $('#b-xlsx-tick').checked=true;
+  syncTicks();
+  const row=$(`#b-tbl tr[data-gp="${g}"]`); if(row){ const box=row.closest('.tbl'); box.scrollTop=row.offsetTop-(box.querySelector('tr')?.offsetHeight||0); box.scrollIntoView({behavior:'smooth',block:'start'}); }
+});
+$('#b-untick').addEventListener('click',()=>{ if(!B.tick) return; B.tick=B.tick.map(()=>false); document.querySelectorAll('#b-tbl input[data-tick]').forEach(c=>c.checked=false); syncTicks(); });
 $('#b-stop').addEventListener('click',()=>abort&&abort.abort());
 
 const SHOWN=['HIGH','MEDIUM','NORMAL','IMPORTER','PARTNER','CHECK'];
@@ -645,11 +660,12 @@ function sortedIdx(){ return B.rows.map((_,i)=>i).filter(i=>!(B.results[i]&&B.re
 function renderB(){
   $('#b-out').hidden=false; $('#b-run').hidden=false; $('#b-copy').hidden=false;
   const cnt={}; B.results.forEach(r=>{ if(r) cnt[r.priority]=(cnt[r.priority]||0)+1; });
-  $('#b-chips').innerHTML=`<a href="#b-rules" class="hint" style="align-self:center" onclick="document.getElementById('b-rules').open=true">? ${T('Kurallar','Rules')}</a>`+SHOWN.map(p=>`<div class="chip"><span class="pill p-${p}">${LABEL[p]}</span><b>${cnt[p]||0}</b></div>`).join('')+(nExcl()?`<p class="hint" style="align-self:center">${T(`${nExcl()} firma listeden çıkarıldı (üretici, şube, yabancı katılımcı vb.)`,`${nExcl()} companies removed (makers, branches, foreign exhibitors…)`)}</p>`:'');
+  $('#b-chips').innerHTML=`<a href="#b-rules" class="hint" style="align-self:center" onclick="document.getElementById('b-rules').open=true">? ${T('Kurallar','Rules')}</a>`+SHOWN.map(p=>`<button type="button" class="chip" data-gp="${p}" title="${T('Tıkla: bu gruba git ve hepsini işaretle / işareti kaldır','Click: jump to this group and tick / untick all')}" ${cnt[p]?'':'disabled'}><span class="pill p-${p}">${LABEL[p]}</span><b>${cnt[p]||0}</b></button>`).join('')+(nExcl()?`<p class="hint" style="align-self:center">${T(`${nExcl()} firma listeden çıkarıldı (üretici, şube, yabancı katılımcı vb.)`,`${nExcl()} companies removed (makers, branches, foreign exhibitors…)`)}</p>`:'');
   const ci=B.map.company??0;
   const tk=!!B.tick;
   $('#b-tbl').innerHTML='<tr>'+(tk?`<th title="${T('İndirilecek firmalar','Companies to download')}">${T('Seç','Pick')}</th>`:'')+`<th>${T('Puan','Grade')}</th><th>${T('Firma','Company')}</th><th>${T('Tayvan markaları','Taiwanese brands')}</th><th>${T('Neden','Reason')}</th>`+B.headers.map((h,i)=>i===ci?'':`<th>${esc(h)}</th>`).join('')+'</tr>'+
-    sortedIdx().map(i=>{const r=B.results[i];const row=B.rows[i];return `<tr>${tk?`<td><input type="checkbox" data-tick="${i}" ${B.tick[i]?'checked':''} aria-label="${T('Ekle','Add')}"></td>`:''}<td>${r?`<span class="pill p-${r.priority}">${LABEL[r.priority]||r.priority}</span>`:'…'}</td><td><b>${esc(row[ci])}</b>${r&&r.repr&&r.repr.length?`<br><span class="hint">${T('+90 eşleşme','+90 match')}: ${esc(r.repr.join(', '))}</span>`:''}</td><td>${esc(tbText(r))}</td><td>${esc(RS(r))}</td>`+row.map((c,j)=>j===ci?'':`<td><div class="cl" title="${esc(c)}">${esc(c)}</div></td>`).join('')+'</tr>';}).join('');
+    sortedIdx().map(i=>{const r=B.results[i];const row=B.rows[i];return `<tr data-gp="${r?r.priority:''}">${tk?`<td><input type="checkbox" data-tick="${i}" ${B.tick[i]?'checked':''} aria-label="${T('Ekle','Add')}"></td>`:''}<td>${r?`<span class="pill p-${r.priority}">${LABEL[r.priority]||r.priority}</span>`:'…'}</td><td><b>${esc(row[ci])}</b>${r&&r.repr&&r.repr.length?`<br><span class="hint">${T('+90 eşleşme','+90 match')}: ${esc(r.repr.join(', '))}</span>`:''}</td><td>${esc(tbText(r))}</td><td>${esc(RS(r))}</td>`+row.map((c,j)=>j===ci?'':`<td><div class="cl" title="${esc(c)}">${esc(c)}</div></td>`).join('')+'</tr>';}).join('');
+  syncTicks();
 }
 function bRows(onlyTicked){
   const ci=B.map.company??0;
