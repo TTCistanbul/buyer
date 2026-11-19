@@ -266,6 +266,7 @@ button{border-radius:999px}
       <div class="btns"><button class="primary" id="b-xlsx"><span data-l="tr">Excel indir</span><span data-l="en">Download Excel</span></button>
         <label class="hint" style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="b-xlsx-tick"> <span data-l="tr">Sadece işaretli firmalar</span><span data-l="en">Ticked companies only</span></label><b class="hint" id="b-ticked" style="margin:0"></b><button type="button" id="b-untick" style="font-size:12px"><span data-l="tr">İşaretleri kaldır</span><span data-l="en">Untick all</span></button></div>
       <div class="btns"><button id="b-hs"><span data-l="tr">HubSpot CSV indir</span><span data-l="en">Download HubSpot CSV</span></button><label for="b-owner" class="hint" style="margin:0">Contact Owner *</label><input type="text" id="b-owner" placeholder="kendi e-postan" data-t-placeholder="kendi e-postan|your email" style="width:210px;padding:6px 8px"></div>
+      <div class="btns"><button id="b-share">☁ <span data-l="tr">İşaretlileri ortak listeye ekle</span><span data-l="en">Add ticked companies to the shared list</span></button></div>
       <p class="hint" style="margin:0"><span data-l="tr">HubSpot sadece işaretli firmaları alır. Contact Owner = kendi e-postan.</span><span data-l="en">HubSpot takes ticked companies only. Contact Owner = your email.</span></p>
     </fieldset>
   </div>
@@ -744,8 +745,10 @@ $('#s-reset').addEventListener('click',async()=>{ const em=$('#s-email').value.t
 $('#s-out').addEventListener('click',()=>firebase.auth().signOut());
 function fillForm(x){ for(const k of FF) $('#ff-'+k).value=(x[k]||''); }
 function resetForm(){ editIdx=null; editKey=null; fillForm({}); $('#f-legend').textContent=T('Firma ekle','Add a company'); $('#ff-cancel').hidden=true; $('#ff-warn').textContent=''; $('#ff-warn').dataset.ack=''; }
-function addLocal(v){ const k=norm(v.company); const i=LOCAL.findIndex(x=>norm(x.company)===k);
-  if(i>=0){ LOCAL[i]={...LOCAL[i],...Object.fromEntries(Object.entries(v).filter(([k,x])=>x&&k!=='company'))}; cloudPut({...v,company:'',_id:LOCAL[i]._id},false,false); return false; }
+function addLocal(v,fillOnly){ const k=norm(v.company); const i=LOCAL.findIndex(x=>norm(x.company)===k);
+  if(i>=0){ const add=Object.fromEntries(Object.entries(v).filter(([k,x])=>x&&k!=='company'&&!(fillOnly&&LOCAL[i][k])));
+    if(!Object.keys(add).length) return false;
+    LOCAL[i]={...LOCAL[i],...add}; cloudPut({...add,_id:LOCAL[i]._id},false,false); return false; }
   LOCAL.push(v); cloudPut(v,true,false); return true; }
 function renderLocal(){
   $('#l-count').textContent=LOCAL.length?T(`(${LOCAL.length} firma)`,`(${LOCAL.length} companies)`):'';
@@ -896,6 +899,21 @@ async function saveHubSpot(list,owner,show,statusEl,ownerEl){
   try{ await downloads.save({filename:name,data:new Blob([csv],{type:'text/csv;charset=utf-8'})}); statusEl.textContent=T(`İndirildi: ${name} (${list.length} firma)`,`Saved: ${name} (${list.length} companies)`); }
   catch(e){ statusEl.textContent=T('İndirme iptal edildi','Download not saved'); }
 }
+$('#b-share').addEventListener('click',()=>{
+  if(!SHARED){ $('#b-status').textContent=T('Önce aşağıdaki “tek tek ekle” bölümünde ofis hesabınla giriş yap.','First sign in with your office account in the “add one by one” section below.'); $('#l-box').open=true; $('#sync').scrollIntoView({behavior:'smooth',block:'center'}); return; }
+  if(B.local){ $('#b-status').textContent=T('Bu firmalar zaten ortak listede.','These companies are already in the shared list.'); return; }
+  const g=(r,k)=>B.map[k]==null?'':String(r[B.map[k]]||'').trim().slice(0,300);
+  const idx=sortedIdx().filter(i=>B.tick&&B.tick[i]&&B.results[i]);
+  if(!idx.length){ $('#b-status').textContent=T('Önce yukarıdaki kartlara tıklayarak firma işaretle.','Tick some companies first by clicking the cards above.'); return; }
+  const src=(g(B.rows[idx[0]],'source')||$('#b-src').value.trim()||$('#b-show').value.split(' — ')[0]).slice(0,200);
+  if(!confirm(T(`${idx.length} firma ortak listeye eklensin mi?`,`Add ${idx.length} companies to the shared list?`))) return;
+  let added=0, upd=0;
+  for(const i of idx){ const r=B.rows[i];
+    const v={company:g(r,'company'),contact:g(r,'contact'),title:g(r,'title'),email:g(r,'email'),phone:g(r,'phone'),mobile:g(r,'mobile'),web:g(r,'web'),address:g(r,'address'),city:g(r,'city'),info:g(r,'info'),source:g(r,'source')||src,country:g(r,'country')||'Türkiye'};
+    if(!v.company) continue; if(addLocal(v,true)) added++; else upd++; }
+  renderLocal();
+  $('#b-status').textContent=T(`Ortak listeye ${added} yeni firma eklendi${upd?`, ${upd} firma zaten vardı (boş alanları tamamlandı)`:''}.`,`${added} new companies added to the shared list${upd?`; ${upd} were already there (empty fields filled)`:''}.`);
+});
 $('#b-hs').addEventListener('click',()=>{
   const g=(r,k)=>B.map[k]==null?'':String(r[B.map[k]]||'').trim();
   const list=sortedIdx().filter(i=>B.tick&&B.tick[i]&&B.results[i]).map(i=>{ const r=B.rows[i], x=B.results[i];
