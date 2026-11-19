@@ -215,7 +215,16 @@ button{border-radius:999px}
   <details id="l-box" class="lbox">
     <summary><b><span data-l="tr">…veya tek tek ekle: kartvizit ya da form</span><span data-l="en">…or add one by one: business card or form</span></b> <span class="hint" id="l-count"></span></summary>
     <div style="display:grid;gap:10px;margin-top:10px">
-    <p class="hint" style="margin:0"><span data-l="tr">Kartvizitler ve aramada bulduğun firmalar. Sadece bu tarayıcıda saklanır.</span><span data-l="en">Business cards and companies you found. Kept only in this browser.</span></p>
+    <div id="sync" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+      <span id="sync-off" style="display:contents"><b><span data-l="tr">Ortak liste için giriş yap</span><span data-l="en">Sign in for the shared list</span></b>
+        <input type="email" id="s-email" placeholder="ad@taitra.org.tw" autocomplete="username" style="width:200px;padding:5px 7px" aria-label="E-posta / Email">
+        <input type="password" id="s-pass" placeholder="••••••" autocomplete="current-password" style="width:130px;padding:5px 7px" aria-label="Şifre / Password">
+        <button id="s-in" type="button"><span data-l="tr">Giriş</span><span data-l="en">Sign in</span></button>
+        <button id="s-reset" type="button" style="font-size:12px"><span data-l="tr">Şifremi unuttum</span><span data-l="en">Forgot password</span></button></span>
+      <span id="sync-on" hidden>✅ <b><span data-l="tr">Ortak liste</span><span data-l="en">Shared list</span></b> · <span id="s-who"></span> <button id="s-out" type="button" style="font-size:12px"><span data-l="tr">Çıkış</span><span data-l="en">Sign out</span></button></span>
+      <span class="hint" id="s-msg" style="margin:0"></span>
+    </div>
+    <p class="hint" style="margin:0" id="l-where"></p>
     <fieldset id="f-form" style="border:1px solid var(--line);border-radius:8px;padding:14px;display:grid;gap:10px">
     <legend style="font-weight:700;padding:0 6px" id="f-legend"><span data-l="tr">Firma ekle</span><span data-l="en">Add a company</span></legend>
     <div><label for="f-src"><span data-l="tr">Nerede buldun?</span><span data-l="en">Where did you find it?</span></label><input type="text" id="f-src" placeholder="Google: CNC tezgah distribütörü · MİB üye listesi · fuar standı"></div>
@@ -374,12 +383,12 @@ function loadScript(src){ return new Promise((res,rej)=>{ const sc=document.crea
   await null;
   renderTW();
   if(FIREBASE_CONFIG){
-    try{ await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js'); await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js');
+    try{ await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js'); await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js'); await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js');
       firebase.initializeApp(FIREBASE_CONFIG); db=firebase.firestore(); }catch(e){ db=null; }
   }
   renderTW();
   if(db&&BRANDS_EDITABLE){ try{ db.collection('config').doc('twbrands').onSnapshot(d=>{ const v=d&&d.exists!==false&&d.data?d.data():null; if(v&&Array.isArray(v.list)&&v.list.length){ TW=v.list; renderTW(); $('#b-tw-status').textContent=T('Son kaydeden','Last saved by')+` ${v.by||'—'} · ${fmt(v.at)}`; } },()=>{}); }catch(e){} }
-  watchHow();
+  watchHow(); startAuth();
 })();
 try{ $('#me').value=localStorage.getItem('tab-me')||''; }catch(e){}
 $('#me').placeholder=T('Adın (isteğe bağlı)','Your name (optional)');
@@ -675,18 +684,59 @@ async function pool(items,n,fn){ let k=0; await Promise.all(Array.from({length:n
 const FF=['company','contact','title','email','phone','mobile','web','address','city','info'];
 let LOCAL=[], editIdx=null;
 try{ LOCAL=JSON.parse(localStorage.getItem('tab_local')||'[]'); if(!Array.isArray(LOCAL)) LOCAL=[]; }catch(e){ LOCAL=[]; }
-const saveLocal=()=>{ try{ localStorage.setItem('tab_local',JSON.stringify(LOCAL)); }catch(e){} };
+const saveLocal=()=>{ if(SHARED) return; try{ localStorage.setItem('tab_local',JSON.stringify(LOCAL)); }catch(e){} };
+/* ---- shared list in Firestore (signed-in office accounts only) ---- */
+let SHARED=false, AUTHU=null, unsubBuyers=null, editKey=null;
+const ADMIN='evatzeng@taitra.org.tw', OFFICE=/@taitra\.org\.tw$/i;
+const KEEP=[...FF,'source','country'];
+const bid=c=>(norm(c)||'x').slice(0,200);
+const cloudErr=e=>{ $('#f-status').textContent=T('Ortak listeye kaydedilemedi: ','Could not save to the shared list: ')+((e&&e.code)||e); };
+function cloudPut(v,isNew,all){ if(!SHARED) return;
+  const d=Object.fromEntries(KEEP.filter(k=>all||v[k]).map(k=>[k,String(v[k]??'')]));
+  const now=new Date().toISOString(), who=me()!=='—'?me():AUTHU.email;
+  Object.assign(d,isNew?{by:who,byEmail:AUTHU.email,at:now}:{upBy:who,upEmail:AUTHU.email,upAt:now});
+  db.collection('buyers').doc(v._id||bid(v.company)).set(d,{merge:true}).catch(cloudErr); }
+function setWhere(){ $('#l-where').innerHTML=SHARED?T('Herkes aynı listeyi görür. Aynı firma ikinci kez eklenirse yeni satır açılmaz, eksik bilgiler tamamlanır.','Everyone sees the same list. Adding a company again fills in missing details instead of a new row.')
+  :T('Giriş yapmadan eklediklerin sadece bu tarayıcıda kalır; giriş yapınca ortak listeye aktarılır.','Without signing in, entries stay in this browser only; they move to the shared list when you sign in.');
+  $('#l-clear').hidden=SHARED; }
+function startShared(){ SHARED=true; editKey=null; resetForm(); let first=true;
+  unsubBuyers=db.collection('buyers').onSnapshot(qs=>{
+    LOCAL=qs.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>String(b.upAt||b.at||'').localeCompare(String(a.upAt||a.at||'')));
+    if(editKey) editIdx=LOCAL.findIndex(x=>x._id===editKey);
+    renderLocal();
+    if(first){ first=false; let mine=[]; try{ mine=JSON.parse(localStorage.getItem('tab_local')||'[]'); }catch(e){}
+      if(Array.isArray(mine)&&mine.length&&confirm(T(`Bu tarayıcıda ${mine.length} firma var. Ortak listeye aktarılsın mı?`,`${mine.length} companies are saved in this browser. Move them to the shared list?`))){
+        for(const v of mine) addLocal(v); try{ localStorage.removeItem('tab_local'); }catch(e){}
+        $('#f-status').textContent=T(`${mine.length} firma ortak listeye aktarıldı.`,`${mine.length} companies moved to the shared list.`); } }
+  },e=>{ $('#s-msg').textContent=T('Ortak liste okunamadı: ','Could not read the shared list: ')+(e.code||e); });
+  setWhere(); }
+function stopShared(){ if(unsubBuyers) unsubBuyers(); unsubBuyers=null; SHARED=false; editKey=null;
+  try{ LOCAL=JSON.parse(localStorage.getItem('tab_local')||'[]'); if(!Array.isArray(LOCAL)) LOCAL=[]; }catch(e){ LOCAL=[]; }
+  resetForm(); renderLocal(); setWhere(); }
+function startAuth(){ if(!db||!firebase.auth) { $('#sync').style.display='none'; return; }
+  firebase.auth().onAuthStateChanged(u=>{ AUTHU=u; const ok=!!(u&&OFFICE.test(u.email||''));
+    $('#sync-off').hidden=!!u; $('#sync-off').style.display=u?'none':'contents'; $('#sync-on').hidden=!u; $('#s-who').textContent=u?u.email:'';
+    $('#s-msg').textContent=u&&!ok?T('Bu hesap ofis hesabı değil.','This is not an office account.'):'';
+    if(ok&&!SHARED) startShared(); if(!ok&&SHARED) stopShared(); });
+}
+$('#s-in').addEventListener('click',async()=>{ const em=$('#s-email').value.trim(), pw=$('#s-pass').value; if(!em||!pw){ $('#s-msg').textContent=T('E-posta ve şifre gir.','Enter email and password.'); return; }
+  $('#s-msg').textContent='…'; try{ await firebase.auth().signInWithEmailAndPassword(em,pw); $('#s-pass').value=''; $('#s-msg').textContent=''; }
+  catch(e){ $('#s-msg').textContent=T('Giriş olmadı. E-postayı ve şifreyi kontrol et.','Sign-in failed. Check the email and password.'); } });
+$('#s-pass').addEventListener('keydown',e=>{ if(e.key==='Enter') $('#s-in').click(); });
+$('#s-reset').addEventListener('click',async()=>{ const em=$('#s-email').value.trim(); if(!em){ $('#s-msg').textContent=T('Önce e-postanı yaz.','Type your email first.'); return; }
+  try{ await firebase.auth().sendPasswordResetEmail(em); }catch(e){} $('#s-msg').textContent=T('Hesap varsa şifre sıfırlama e-postası gönderildi.','If the account exists, a reset email was sent.'); });
+$('#s-out').addEventListener('click',()=>firebase.auth().signOut());
 function fillForm(x){ for(const k of FF) $('#ff-'+k).value=(x[k]||''); }
-function resetForm(){ editIdx=null; fillForm({}); $('#f-legend').textContent=T('Firma ekle','Add a company'); $('#ff-cancel').hidden=true; $('#ff-warn').textContent=''; $('#ff-warn').dataset.ack=''; }
+function resetForm(){ editIdx=null; editKey=null; fillForm({}); $('#f-legend').textContent=T('Firma ekle','Add a company'); $('#ff-cancel').hidden=true; $('#ff-warn').textContent=''; $('#ff-warn').dataset.ack=''; }
 function addLocal(v){ const k=norm(v.company); const i=LOCAL.findIndex(x=>norm(x.company)===k);
-  if(i>=0){ LOCAL[i]={...LOCAL[i],...Object.fromEntries(Object.entries(v).filter(([,x])=>x))}; return false; }
-  LOCAL.push(v); return true; }
+  if(i>=0){ LOCAL[i]={...LOCAL[i],...Object.fromEntries(Object.entries(v).filter(([k,x])=>x&&k!=='company'))}; cloudPut({...v,company:'',_id:LOCAL[i]._id},false,false); return false; }
+  LOCAL.push(v); cloudPut(v,true,false); return true; }
 function renderLocal(){
   $('#l-count').textContent=LOCAL.length?T(`(${LOCAL.length} firma)`,`(${LOCAL.length} companies)`):'';
   $('#l-grade').disabled=!LOCAL.length; $('#l-clear').disabled=!LOCAL.length;
-  $('#l-tbl').innerHTML=`<tr><th>${T('Firma','Company')}</th><th>${T('Yetkili','Contact')}</th><th>${T('Görevi','Job title')}</th><th>${T('E-posta','Email')}</th><th>${T('Telefon','Phone')}</th><th>${T('Şehir','City')}</th><th>${T('Kaynak','Source')}</th><th></th></tr>`+
-    (LOCAL.length?LOCAL.map((x,i)=>`<tr><td><b>${esc(x.company)}</b></td><td>${esc(x.contact)}</td><td>${esc(x.title)}</td><td>${esc(x.email)}</td><td>${esc(x.phone||x.mobile)}</td><td>${esc(x.city)}</td><td><span class="hint">${esc(x.source)}</span></td><td style="white-space:nowrap"><button data-ledit="${i}" title="${T('Formda aç','Open in the form')}" style="padding:2px 8px">✎</button> <button data-ldel="${i}" title="${T('Sil','Delete')}" style="padding:2px 8px">×</button></td></tr>`).join('')
-      :`<tr><td colspan="8" class="hint">${T('Henüz firma yok. Formu doldur veya kartvizit fotoğrafı seç.','No companies yet. Fill in the form or pick business card photos.')}</td></tr>`);
+  $('#l-tbl').innerHTML=`<tr><th>${T('Firma','Company')}</th><th>${T('Yetkili','Contact')}</th><th>${T('Görevi','Job title')}</th><th>${T('E-posta','Email')}</th><th>${T('Telefon','Phone')}</th><th>${T('Şehir','City')}</th><th>${T('Kaynak','Source')}</th>${SHARED?`<th>${T('Ekleyen','Added by')}</th>`:''}<th></th></tr>`+
+    (LOCAL.length?LOCAL.map((x,i)=>`<tr><td><b>${esc(x.company)}</b></td><td>${esc(x.contact)}</td><td>${esc(x.title)}</td><td>${esc(x.email)}</td><td>${esc(x.phone||x.mobile)}</td><td>${esc(x.city)}</td><td><span class="hint">${esc(x.source)}</span></td>${SHARED?`<td><span class="hint">${esc(x.by||'')}</span></td>`:''}<td style="white-space:nowrap"><button data-ledit="${i}" title="${T('Formda aç','Open in the form')}" style="padding:2px 8px">✎</button> <button data-ldel="${i}" title="${T('Sil','Delete')}" style="padding:2px 8px">×</button></td></tr>`).join('')
+      :`<tr><td colspan="9" class="hint">${T('Henüz firma yok. Formu doldur veya kartvizit fotoğrafı seç.','No companies yet. Fill in the form or pick business card photos.')}</td></tr>`);
 }
 $('#ff-cancel').addEventListener('click',e=>{ e.preventDefault(); resetForm(); });
 $('#ff-save').addEventListener('click',e=>{
@@ -697,14 +747,16 @@ $('#ff-save').addEventListener('click',e=>{
   const missing=[['contact',T('Yetkili','Contact')],['title',T('Görevi','Job title')],['email',T('E-posta','Email')],['city',T('Şehir','City')]].filter(([k])=>!v[k]).map(([,l])=>l);
   if(missing.length&&$('#ff-warn').dataset.ack!==missing.join()){ $('#ff-warn').dataset.ack=missing.join(); $('#ff-warn').innerHTML=`<span class="miss">${T('Eksik','Missing')}</span> ${missing.join(', ')}. `+T('Bulabilirsen doldur, bulamazsan düğmeye bir kez daha bas.','Fill them in if you can, or press the button again to add anyway.'); return; }
   v.source=$('#f-src').value.trim().slice(0,200); v.country='Türkiye';
-  if(editIdx!=null){ LOCAL[editIdx]={...LOCAL[editIdx],...v}; $('#f-status').textContent=T('Güncellendi: ','Updated: ')+v.company; }
+  if(editIdx!=null&&editIdx>=0){ LOCAL[editIdx]={...LOCAL[editIdx],...v}; cloudPut(LOCAL[editIdx],false,true); $('#f-status').textContent=T('Güncellendi: ','Updated: ')+v.company; }
   else $('#f-status').textContent=(addLocal(v)?T('Eklendi: ','Added: '):T('Zaten listedeydi, bilgiler güncellendi: ','Already listed, details updated: '))+v.company;
   saveLocal(); resetForm(); renderLocal(); $('#ff-company').focus();
 });
 $('#l-tbl').addEventListener('click',e=>{
   const ed=e.target.closest('[data-ledit]'), del=e.target.closest('[data-ldel]');
-  if(ed){ editIdx=+ed.dataset.ledit; const x=LOCAL[editIdx]; fillForm(x); $('#f-src').value=x.source||''; $('#f-legend').textContent=T('Düzenle','Edit')+': '+x.company; $('#ff-cancel').hidden=false; $('#f-form').scrollIntoView({behavior:'smooth',block:'start'}); }
-  if(del){ const i=+del.dataset.ldel; if(!confirm(T(`“${LOCAL[i].company}” listeden silinsin mi?`,`Delete “${LOCAL[i].company}” from the list?`))) return; LOCAL.splice(i,1); saveLocal(); resetForm(); renderLocal(); }
+  if(ed){ editIdx=+ed.dataset.ledit; const x=LOCAL[editIdx]; editKey=x._id||null; fillForm(x); $('#f-src').value=x.source||''; $('#f-legend').textContent=T('Düzenle','Edit')+': '+x.company; $('#ff-cancel').hidden=false; $('#f-form').scrollIntoView({behavior:'smooth',block:'start'}); }
+  if(del){ const i=+del.dataset.ldel; if(!confirm(T(`“${LOCAL[i].company}” listeden silinsin mi?`,`Delete “${LOCAL[i].company}” from the list?`))) return; if(SHARED){ const x=LOCAL[i]; if(x.byEmail&&x.byEmail!==AUTHU.email&&AUTHU.email!==ADMIN){ $('#f-status').textContent=T(`Bu firmayı ${x.by||x.byEmail} ekledi; sadece o veya Eva silebilir.`,`${x.by||x.byEmail} added this company; only they or Eva can delete it.`); return; }
+      db.collection('buyers').doc(x._id).delete().catch(cloudErr); return; }
+    LOCAL.splice(i,1); saveLocal(); resetForm(); renderLocal(); }
 });
 $('#l-clear').addEventListener('click',()=>{ if(!LOCAL.length||!confirm(T(`${LOCAL.length} firmalık liste silinsin mi? İndirmediysen önce indir.`,`Delete the list of ${LOCAL.length} companies? Download it first if you have not.`))) return; LOCAL=[]; saveLocal(); resetForm(); renderLocal(); });
 $('#l-grade').addEventListener('click',()=>{
@@ -717,7 +769,7 @@ $('#l-grade').addEventListener('click',()=>{
   showMap(); $('#b-status').textContent=T(`${LOCAL.length} firma puanlanıyor…`,`Grading ${LOCAL.length} companies…`); autoGrade();
   $('#b-map').scrollIntoView({behavior:'smooth',block:'start'});
 });
-renderLocal();
+renderLocal(); setWhere();
 /* ---- business card photos: read in this browser with Tesseract.js (nothing is uploaded) ---- */
 const TESS_SRC='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
 let tessWorker=null;
