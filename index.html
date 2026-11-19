@@ -166,7 +166,7 @@ button{border-radius:999px}
 
 <div class="tabs" role="tablist">
   <button class="tab" role="tab" id="tab-m" aria-selected="true" aria-controls="pm" data-n="1"><b class="tl" data-l="tr">Fuar eşleştirme</b><b class="tl" data-l="en">Taiwan ↔ Türkiye shows</b></button>
-  <button class="tab" role="tab" id="tab-a" aria-selected="false" aria-controls="pa" data-n="2"><b class="tl" data-l="tr">Fuarı incele</b><b class="tl" data-l="en">Show analysis</b></button>
+  <button class="tab" role="tab" id="tab-a" aria-selected="false" aria-controls="pa" data-n="2"><b class="tl" data-l="tr">Fuar anahtar kelimeleri</b><b class="tl" data-l="en">Show keywords</b></button>
   <button class="tab" role="tab" id="tab-b" aria-selected="false" aria-controls="pb" data-n="3"><b class="tl" data-l="tr">Listeyi puanla</b><b class="tl" data-l="en">Grade an exhibitor list</b></button>
 </div>
 
@@ -174,7 +174,7 @@ button{border-radius:999px}
 <section class="panel" id="pa" role="tabpanel" aria-labelledby="tab-a" hidden>
   <div class="row">
     <div><label for="a-show"><span data-l="tr">Tayvan fuarı</span><span data-l="en">Taiwan show</span></label><select id="a-show"></select></div>
-    <div style="align-self:end"><button id="a-claude" type="button">✨ <span data-l="tr">Claude ile yeni fuar incele</span><span data-l="en">Analyse a show with Claude</span> ↗</button>
+    <div style="align-self:end" hidden><button id="a-claude" type="button">✨ <span data-l="tr">Claude ile yeni fuar incele</span><span data-l="en">Analyse a show with Claude</span> ↗</button>
       <p class="hint" style="margin:4px 0 0"><span data-l="tr">claude.ai sürümünü açar; Claude hesabı gerekir.</span><span data-l="en">Opens the claude.ai version; needs a Claude account.</span></p></div>
   </div>
   <div class="status" id="a-status" aria-live="polite"></div>
