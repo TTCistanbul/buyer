@@ -112,7 +112,8 @@
     if (!r.address) r.address = lines.find(l => l.length < 220 && /(mah\.|mahalle|cad\.|caddesi|sok\.|sokak|bulvar|osb|organize sanayi|no\s*:|\b\d{5}\b.*\/)/i.test(l)) || '';
     const m = r.address.match(/\/\s*([^\/]+?)\s*(\/\s*(t[uü]rkiye|turkey))?\s*$/i); r.city = m ? m[1].replace(/t[uü]rkiye|turkey/i, '').trim() : '';
     // description: longest paragraph
-    if (!r.info) r.info = [...d.querySelectorAll('p')].map(p => p.textContent.replace(/\s+/g, ' ').trim()).filter(t => t.length > 60 && !/@|copyright|©|çerez|cookie/i.test(t)).sort((a, b) => b.length - a.length)[0] || '';
+    const longP = [...d.querySelectorAll('p')].map(p => p.textContent.replace(/\s+/g, ' ').trim()).filter(t => t.length > 60 && !/@|copyright|©|çerez|cookie/i.test(t)).sort((a, b) => b.length - a.length)[0] || '';
+    if (longP && !r.info.includes(longP.slice(0, 40))) r.info = r.info ? r.info + ' · ' + longP : longP;
     r.info = r.info.slice(0, 400);
     return r;
   }
