@@ -285,7 +285,7 @@ button{border-radius:999px}
     <summary><b><span data-l="tr">Puanlama kuralları</span><span data-l="en">Grading rules</span></b></summary>
     <div class="tbl" style="margin-top:8px"><table>
       <tr><th><span data-l="tr">Ne var?</span><span data-l="en">What</span></th><th><span data-l="tr">Puan</span><span data-l="en">Points</span></th></tr>
-      <tr><td><span data-l="tr">Ürün uyuyor: 2. sekmedeki bu fuarın anahtar kelimeleri</span><span data-l="en">Product match: this show's keywords from tab 2</span></td><td style="white-space:nowrap"><span data-l="tr">Her ürün grubu +2 (en fazla +6)</span><span data-l="en">+2 per product group (max +6)</span></td></tr><tr><td><span data-l="tr">İthalat izi: ithalat, distribütör, bayi, temsilci, toptan</span><span data-l="en">Import sign: ithalat, distribütör, bayi, temsilci, toptan</span></td><td style="white-space:nowrap">+3</td></tr><tr><td><span data-l="tr">Sadece “dış ticaret”, “trading”, “pazarlama” (ithalat mı belli değil)</span><span data-l="en">Only “dış ticaret”, “trading”, “pazarlama” (import unclear)</span></td><td>+1</td></tr><tr><td><span data-l="tr">Üretici, ve fuar fabrikaların alıcı olduğu bir fuar (TIMTOS, AMPA, TAITRONICS, Energy, COMPUTEX, TADTE, FOOD, CYCLE)</span><span data-l="en">Maker, at a show where factories are buyers (TIMTOS, AMPA, TAITRONICS, Energy, COMPUTEX, TADTE, FOOD, CYCLE)</span></td><td style="white-space:nowrap">+3</td></tr><tr><td><span data-l="tr">Tayvan markası (ofis marka listesiyle)</span><span data-l="en">Taiwanese brand (office brand list)</span></td><td style="white-space:nowrap"><span data-l="tr">Her marka +2 (en fazla +6)</span><span data-l="en">+2 per brand (max +6)</span></td></tr><tr><td><span data-l="tr">Ortak listede başka bir kaynaktan da var</span><span data-l="en">Already in the shared list from another source</span></td><td style="white-space:nowrap">+2</td></tr><tr><td><span data-l="tr">Sadece ihracat yazıyorsa</span><span data-l="en">Mentions export only</span></td><td style="white-space:nowrap">0</td></tr>
+      <tr><td><span data-l="tr">Ürün uyuyor: 2. sekmedeki bu fuarın anahtar kelimeleri</span><span data-l="en">Product match: this show's keywords from tab 2</span></td><td style="white-space:nowrap"><span data-l="tr">Her ürün grubu +2 (en fazla +6)</span><span data-l="en">+2 per product group (max +6)</span></td></tr><tr><td><span data-l="tr">İthalat izi: ithalat, distribütör, bayi, temsilci, toptan</span><span data-l="en">Import sign: ithalat, distribütör, bayi, temsilci, toptan</span></td><td style="white-space:nowrap">+3</td></tr><tr><td><span data-l="tr">Sadece “dış ticaret”, “trading”, “pazarlama” (ithalat mı belli değil)</span><span data-l="en">Only “dış ticaret”, “trading”, “pazarlama” (import unclear)</span></td><td>+1</td></tr><tr><td><span data-l="tr">Üretici, ve fuar fabrikaların alıcı olduğu bir fuar (TIMTOS, AMPA, TAITRONICS, Energy, COMPUTEX, TADTE, FOOD, CYCLE)</span><span data-l="en">Maker, at a show where factories are buyers (TIMTOS, AMPA, TAITRONICS, Energy, COMPUTEX, TADTE, FOOD, CYCLE)</span></td><td style="white-space:nowrap">+3</td></tr><tr><td><span data-l="tr">Tayvan markası (ofis marka listesiyle)</span><span data-l="en">Taiwanese brand (office brand list)</span></td><td style="white-space:nowrap"><span data-l="tr">Her marka +2 (en fazla +6)</span><span data-l="en">+2 per brand (max +6)</span></td></tr><tr><td><span data-l="tr">Ortak listede başka listelerde de var (aynı ad, web veya e-posta alan adı)</span><span data-l="en">Already in the shared list from other lists (same name, website or e-mail domain)</span></td><td style="white-space:nowrap"><span data-l="tr">Her liste +2 (en fazla +6)</span><span data-l="en">+2 per list (max +6)</span></td></tr><tr><td><span data-l="tr">Sadece ihracat yazıyorsa</span><span data-l="en">Mentions export only</span></td><td style="white-space:nowrap">0</td></tr>
     </table></div>
     <div class="tbl" style="margin-top:8px"><table>
       <tr><th><span data-l="tr">Sonuç</span><span data-l="en">Result</span></th><th><span data-l="tr">Toplam puan</span><span data-l="en">Total</span></th></tr>
@@ -677,7 +677,7 @@ $('#b-run').addEventListener('click',async()=>{
   for(const i of todo){ const row=B.rows[i];
     const srcs=[g(row,'brands'),bracketed(g(row,'company')),...(extra[i]||[])];
     const tb=[...new Set(srcs.flatMap(twMatches))]; const amb=[...new Set(srcs.flatMap(twAmbig))].filter(b=>!tb.includes(b));
-    B.results[i]={...gradeByRules(g(row,'company'),String(g(row,'info')||'')+' '+String(g(row,'brands')||''),tb,extra[i]||[],show),taiwan_brands:tb,tb_unverified:amb,repr:extra[i]||[]};
+    B.results[i]={...gradeByRules(g(row,'company'),String(g(row,'info')||'')+' '+String(g(row,'brands')||''),tb,extra[i]||[],show,{web:g(row,'web'),email:g(row,'email')}),taiwan_brands:tb,tb_unverified:amb,repr:extra[i]||[]};
   }
   B.tick=B.results.map(()=>false);
   $('#b-run').disabled=false; renderB();
@@ -702,7 +702,7 @@ function showTerms(show){ const k=kwKey(show||''); if(!k) return []; if(KW_CACHE
     const ws=fold(ph).split(/[^a-z0-9]+/).filter(w=>w.length>=3&&!ROLE_W.has(w)); if(!ws.length||ws.every(w=>GENERIC_W.has(w))||(ws.length===1&&ws[0].length<4)) continue;
     const core=ws.filter(w=>!GENERIC_W.has(w)); out.push({zone,label:core.join(' '),stems:core.map(w=>w.slice(0,Math.max(3,Math.min(w.length,6))))}); }
   return KW_CACHE[k]=out; }
-function gradeByRules(company,info,tb,repr,show){
+function gradeByRules(company,info,tb,repr,show,ids){
   const c=fold(company), t=c+' '+fold(info), hit=re=>{ const m=t.match(re); return m?m[0].trim():''; };
   let h;
   if(h=hit(RX_EXCL)) return {priority:'EXCLUDE',score:0,reason_tr:`“${h}” geçiyor: dernek, medya veya fuar`,reason_en:`Contains “${h}”: association, media or fair`};
@@ -724,8 +724,9 @@ function gradeByRules(company,info,tb,repr,show){
   // 4) Taiwanese brands
   if(tb.length){ const p=Math.min(tb.length,3)*2; score+=p; tr.push(`${tb.length} Tayvan markası (+${p})`); en.push(`${tb.length} Taiwanese brand${tb.length>1?'s':''} (+${p})`); }
   // 5) already in the shared list from another source
-  if(SHARED&&!B.local){ const o=LOCAL.find(x=>norm(x.company)===norm(company)); const src=$('#b-src').value.trim();
-    if(o&&o.source&&fold(o.source)!==fold(src)){ score+=2; tr.push(`Başka listede de var: ${o.source} (+2)`); en.push(`Also on another list: ${o.source} (+2)`); }
+  if(SHARED&&!B.local){ const oi=findCo({company,web:(ids&&ids.web)||'',email:(ids&&ids.email)||''}); const o=oi>=0?LOCAL[oi]:null; const src=$('#b-src').value.trim();
+    const other=o?srcList(o).filter(s=>fold(s)!==fold(src)):[];
+    if(other.length){ const p=Math.min(other.length,3)*2; score+=p; tr.push(`${other.length} başka listede de var: ${other.join(', ')} (+${p})`); en.push(`Also on ${other.length} other list${other.length>1?'s':''}: ${other.join(', ')} (+${p})`); }
     else if(o){ tr.push('Zaten ortak listede'); en.push('Already in the shared list'); } }
   const priority=score>=8?'HIGH':score>=5?'MEDIUM':score>=3?'NORMAL':'CHECK';
   if(!tr.length){ tr.push('Bilgi yetersiz; kontrol et'); en.push('Not enough information; check'); }
@@ -800,7 +801,12 @@ const saveLocal=()=>{ if(SHARED) return; try{ localStorage.setItem('tab_local',J
 let SHARED=false, AUTHU=null, unsubBuyers=null, editKey=null;
 const ADMIN='evatzeng@taitra.org.tw', OFFICE=/@taitra\.org\.tw$/i;
 const KEEP=[...FF,'source','country'];
-const bid=c=>(norm(c)||'x').slice(0,200);
+const coKey=c=>norm(String(c||'').replace(/\b(sanayi+|sanayii|ticaret|ithalat|ihracat|pazarlama|paz|ins|insaat taahhut|taahhut|mumessillik|limited|sirketi|anonim)\b\.?/gi,' ').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\b(sanayi+|ticaret|ithalat|ihracat|pazarlama|paz|mumessillik|taahhut)\b/g,' '));
+const bid=c=>(coKey(c)||norm(c)||'x').slice(0,200);
+const SEP=' · ';
+const srcList=x=>String(x&&x.source||'').split(SEP).map(s=>s.trim()).filter(Boolean);
+function findCo(v){ const k=coKey(v.company); let i=k?LOCAL.findIndex(x=>coKey(x.company)===k):-1; if(i>=0) return i;
+  const d=domainOf(v); if(d) i=LOCAL.findIndex(x=>domainOf(x)===d); return i; }
 const cloudErr=e=>{ $('#f-status').textContent=T('Ortak listeye kaydedilemedi: ','Could not save to the shared list: ')+((e&&e.code)||e); };
 function cloudPut(v,isNew,all){ if(!SHARED) return;
   const d=Object.fromEntries(KEEP.filter(k=>all||v[k]).map(k=>[k,String(v[k]??'')]));
@@ -839,8 +845,9 @@ $('#s-reset').addEventListener('click',async()=>{ const em=$('#s-email').value.t
 $('#s-out').addEventListener('click',()=>firebase.auth().signOut());
 function fillForm(x){ for(const k of FF) $('#ff-'+k).value=(x[k]||''); }
 function resetForm(){ editIdx=null; editKey=null; fillForm({}); $('#f-legend').textContent=T('Firma ekle','Add a company'); $('#ff-cancel').hidden=true; $('#ff-warn').textContent=''; $('#ff-warn').dataset.ack=''; }
-function addLocal(v,fillOnly){ const k=norm(v.company); const i=LOCAL.findIndex(x=>norm(x.company)===k);
-  if(i>=0){ const add=Object.fromEntries(Object.entries(v).filter(([k,x])=>x&&k!=='company'&&!(fillOnly&&LOCAL[i][k])));
+function addLocal(v,fillOnly){ const i=findCo(v);
+  if(i>=0&&v.source){ const have=srcList(LOCAL[i]); if(!have.some(s=>norm(s)===norm(v.source))) v={...v,source:[...have,v.source].join(SEP)}; else v={...v,source:''}; }
+  if(i>=0){ const add=Object.fromEntries(Object.entries(v).filter(([k,x])=>x&&k!=='company'&&(k==='source'||!(fillOnly&&LOCAL[i][k]))));
     if(!Object.keys(add).length) return false;
     LOCAL[i]={...LOCAL[i],...add}; cloudPut({...add,_id:LOCAL[i]._id},false,false); return false; }
   LOCAL.push(v); cloudPut(v,true,false); return true; }
@@ -848,7 +855,7 @@ function renderLocal(){
   $('#l-count').textContent=LOCAL.length?T(`(${LOCAL.length} firma)`,`(${LOCAL.length} companies)`):'';
   $('#l-grade').disabled=!LOCAL.length; $('#l-clear').disabled=!LOCAL.length;
   $('#l-tbl').innerHTML=`<tr><th>${T('Firma','Company')}</th><th>${T('Yetkili','Contact')}</th><th>${T('Görevi','Job title')}</th><th>${T('E-posta','Email')}</th><th>${T('Telefon','Phone')}</th><th>${T('Şehir','City')}</th><th>${T('Kaynak','Source')}</th>${SHARED?`<th>${T('Ekleyen','Added by')}</th>`:''}<th></th></tr>`+
-    (LOCAL.length?LOCAL.map((x,i)=>`<tr><td><b>${esc(x.company)}</b></td><td>${esc(x.contact)}</td><td>${esc(x.title)}</td><td>${esc(x.email)}</td><td>${esc(x.phone||x.mobile)}</td><td>${esc(x.city)}</td><td><span class="hint">${esc(x.source)}</span></td>${SHARED?`<td><span class="hint">${esc(x.by||'')}</span></td>`:''}<td style="white-space:nowrap"><button data-ledit="${i}" title="${T('Formda aç','Open in the form')}" style="padding:2px 8px">✎</button> <button data-ldel="${i}" title="${T('Sil','Delete')}" style="padding:2px 8px">×</button></td></tr>`).join('')
+    (LOCAL.length?LOCAL.map((x,i)=>`<tr><td><b>${esc(x.company)}</b></td><td>${esc(x.contact)}</td><td>${esc(x.title)}</td><td>${esc(x.email)}</td><td>${esc(x.phone||x.mobile)}</td><td>${esc(x.city)}</td><td><span class="hint">${srcList(x).length>1?`<b>${srcList(x).length} ${T('liste','lists')}</b>: `:''}${esc(x.source)}</span></td>${SHARED?`<td><span class="hint">${esc(x.by||'')}</span></td>`:''}<td style="white-space:nowrap"><button data-ledit="${i}" title="${T('Formda aç','Open in the form')}" style="padding:2px 8px">✎</button> <button data-ldel="${i}" title="${T('Sil','Delete')}" style="padding:2px 8px">×</button></td></tr>`).join('')
       :`<tr><td colspan="9" class="hint">${T('Henüz firma yok. Formu doldur veya kartvizit fotoğrafı seç.','No companies yet. Fill in the form or pick business card photos.')}</td></tr>`);
 }
 $('#ff-cancel').addEventListener('click',e=>{ e.preventDefault(); resetForm(); });
