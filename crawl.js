@@ -16,6 +16,21 @@
   for (const a of sameSite) { const u = new URL(a.href); const segs = u.pathname.replace(/\/$/, '').split('/'); const key = segs.slice(0, -1).join('/') || '/'; (groups[key] = groups[key] || new Set()).add(u.origin + u.pathname); }
   const best = Object.entries(groups).sort((a, b) => b[1].size - a[1].size)[0];
   let urls = best ? [...best[1]] : [];
+  // some sites open each company with onclick="window.open('…')" instead of a link
+  const NAMES = {};
+  const clickItems = [];
+  document.querySelectorAll('[onclick],[data-href],[data-url],[data-link]').forEach(el => {
+    if (inChrome(el)) return;
+    const src = (el.getAttribute('onclick') || '') + ' ' + (el.getAttribute('data-href') || el.getAttribute('data-url') || el.getAttribute('data-link') || '');
+    const m = src.match(/(https?:\/\/[^'"\s)]+)/); if (!m) return;
+    let u; try { u = new URL(m[1]); } catch (e) { return; }
+    if (SOCIAL.test(u.hostname) || SKIP.test(u.pathname)) return;
+    const name = el.textContent.replace(/\s+/g, ' ').trim();
+    const key = u.href.split('#')[0];
+    if (name && name.length > 2 && name.length < 160 && !/^(web ?sitesi|website|detay|incele|devam[ıi]?|more|details|git|visit)$/i.test(name)) NAMES[key] = NAMES[key] || name;
+    if (!clickItems.includes(key)) clickItems.push(key);
+  });
+  if (clickItems.length >= 5 && clickItems.length > urls.length) urls = clickItems;
 
   // things that belong to the association itself (shown on this list page) are not company data
   const pageText = document.body.innerText;
@@ -54,6 +69,8 @@
   const RX_LBL = new RegExp('(' + ALL.map(x => esc(x[0])).sort((a, b) => b.length - a.length).join('|') + ')\\s*:?\\s*', 'g');
   const kindOf = l => (ALL.find(x => x[0] === l.trim().replace(/:$/, '') || x[0] === l) || ALL.find(x => x[0].trim().replace(/:$/, '') === l.trim().replace(/[:\s]+$/, '')) || [])[1];
   async function read(url) {
+    const uh = new URL(url).hostname.replace(/^www\./, '');
+    if (uh !== host) return { company: NAMES[url] || uh, contact: '', title: '', email: '', phone: '', web: url, address: '', city: '', info: '', page: location.href.split('#')[0] };
     const html = await (await fetch(url, { credentials: 'omit' })).text();
     const d = new DOMParser().parseFromString(html, 'text/html');
     d.querySelectorAll('script,style,noscript,header,footer,nav,aside,form,iframe,[role=navigation]').forEach(e => e.remove());
@@ -63,6 +80,7 @@
     const h1 = d.querySelector('h1');
     r.company = (h1 && h1.textContent.trim()) || (d.querySelector('meta[property="og:title"]') || {}).content || d.title || '';
     r.company = r.company.split(/\s[–|\-]\s/)[0].trim();
+    if (NAMES[url]) r.company = NAMES[url];
     // labelled fields
     for (let i = 0; i < lines.length; i++) {
       const parts = lines[i].split(RX_LBL);
@@ -101,8 +119,9 @@
     for (let i = 0; i < urls.length && !stop; i++) {
       msg(`${i + 1} / ${urls.length} okunuyor… / reading…`);
       $('[data-bar] i').style.width = (100 * (i + 1) / urls.length) + '%';
-      try { rows.push(await read(urls[i])); } catch (e) { fail++; }
-      await new Promise(r => setTimeout(r, 350));
+      const ext = new URL(urls[i]).hostname.replace(/^www\./, '') !== host;
+      try { rows.push(await read(urls[i])); } catch (e) { fail++; if (NAMES[urls[i]]) rows.push({ company: NAMES[urls[i]], contact: '', title: '', email: '', phone: '', web: '', address: '', city: '', info: '', page: urls[i] }); }
+      if (!ext) await new Promise(r => setTimeout(r, 350));
     }
     $('[data-stop]').hidden = true; $('[data-go]').hidden = false; $('[data-copy]').hidden = !rows.length; $('[data-dl]').hidden = !rows.length;
     const nPhone = rows.filter(r => r.phone).length, nMail = rows.filter(r => r.email).length;
