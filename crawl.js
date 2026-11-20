@@ -63,11 +63,20 @@
   window.__ttcCrawl = { show: () => box.scrollIntoView(), get rows() { return rows; } };
 
   // --- 3) read one company page
-  const LBL = { contact: ['İsim Soyisim', 'İsim Soyad', 'Ad Soyad', 'Adı Soyadı', 'Yetkili Kişi', 'Yetkili', 'Contact Person', 'Name Surname'], title: ['Görevi', 'Görev', 'Unvanı', 'Ünvanı', 'Unvan', 'Ünvan', 'Position', 'Title'], phone: ['Telefon', 'Tel:', 'Tel.', 'Tel ', 'Phone'], fax: ['Faks', 'Fax'], email: ['E-posta', 'E-Posta', 'Eposta', 'E-mail', 'E-Mail', 'Email'], web: ['Web Sitesi', 'Web Site', 'Website', 'Web Adresi', 'Web:'], address: ['Adres', 'Address'] };
+  const LBL = { contact: ['İsim Soyisim', 'İsim Soyad', 'Ad Soyad', 'Adı Soyadı', 'Yetkili Kişi', 'Yetkili', 'Contact Person', 'Name Surname'], title: ['Görevi', 'Görev', 'Unvanı', 'Ünvanı', 'Unvan', 'Ünvan', 'Position', 'Title'], phone: ['Telefon', 'Tel:', 'Tel.', 'Phone'], fax: ['Faks', 'Fax'], email: ['E-posta', 'E-Posta', 'Eposta', 'E-mail', 'E-Mail', 'Email', 'Mail:', 'Mail'], info: ['Faaliyet Alanları', 'Faaliyet Alanı', 'Faaliyet Konusu', 'Faaliyet', 'Ürünler', 'Activities'], web: ['Web Sitesi', 'Web Site', 'Website', 'Web Adresi', 'Web:'], address: ['Adres', 'Address'] };
   const ALL = Object.entries(LBL).flatMap(([k, a]) => a.flatMap(l => [[l, k], [l.toLocaleUpperCase('tr'), k]]));
   const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const RX_LBL = new RegExp('(' + ALL.map(x => esc(x[0])).sort((a, b) => b.length - a.length).join('|') + ')\\s*:?\\s*', 'g');
   const kindOf = l => (ALL.find(x => x[0] === l.trim().replace(/:$/, '') || x[0] === l) || ALL.find(x => x[0].trim().replace(/:$/, '') === l.trim().replace(/[:\s]+$/, '')) || [])[1];
+  const slugName = url => { const s = new URL(url).pathname.replace(/\/$/, '').split('/').pop().replace(/[-_]\d{6,}([-_.]\d+)*$/, '').replace(/\.html?$/, ''); return s.replace(/[-_]+/g, ' ').toLocaleUpperCase('tr').replace(/\bA S$/, 'A.Ş.').replace(/\bLTD STI\b/, 'LTD. ŞTİ.').trim(); };
+  // values that repeat on most pages (the association's own address, phone, slogan) are not company data
+  function dropRepeats(list) {
+    if (list.length < 5) return;
+    for (const k of ['company', 'contact', 'title', 'email', 'phone', 'web', 'address', 'city', 'info']) {
+      const n = {}; list.forEach(r => { if (r[k]) n[r[k]] = (n[r[k]] || 0) + 1; });
+      for (const [v, c] of Object.entries(n)) if (c >= Math.max(3, list.length * 0.3)) list.forEach(r => { if (r[k] === v) r[k] = k === 'company' ? slugName(r.page) : ''; });
+    }
+  }
   async function read(url) {
     const uh = new URL(url).hostname.replace(/^www\./, '');
     if (uh !== host) return { company: NAMES[url] || uh, contact: '', title: '', email: '', phone: '', web: url, address: '', city: '', info: '', page: location.href.split('#')[0] };
@@ -77,9 +86,10 @@
     d.querySelectorAll('p,div,li,tr,td,th,dd,dt,h1,h2,h3,h4,h5,h6,br,section,article,span').forEach(e => e.append('\n'));
     const lines = (d.body ? d.body.textContent : '').replace(/[\t  ]+/g, ' ').split('\n').map(s => s.trim()).filter(Boolean);
     const r = { company: '', contact: '', title: '', email: '', phone: '', web: '', address: '', city: '', info: '', page: url };
-    const h1 = d.querySelector('h1');
-    r.company = (h1 && h1.textContent.trim()) || (d.querySelector('meta[property="og:title"]') || {}).content || d.title || '';
-    r.company = r.company.split(/\s[–|\-]\s/)[0].trim();
+    const bad = s => !s || s.length < 3 || s.length > 160 || /[:：]\s*$/.test(s) || /^(https?:\/\/|www\.)|@|^[+\d\s()\-]{7,}$/.test(s);
+    const heads = [...d.querySelectorAll('h1,h2')].map(e => e.textContent.replace(/\s+/g, ' ').trim()).filter(s => !bad(s));
+    const tparts = [(d.querySelector('meta[property="og:title"]') || {}).content || '', d.title || ''].flatMap(s => s.split(/\s[–|\-]\s/)).map(s => s.trim()).filter(s => !bad(s));
+    r.company = heads[0] || tparts[0] || slugName(url);
     if (NAMES[url]) r.company = NAMES[url];
     // labelled fields
     for (let i = 0; i < lines.length; i++) {
@@ -88,7 +98,7 @@
         const k = kindOf(parts[j]); if (!k) continue;
         let v = (parts[j + 1] || '').replace(/^[\s:：\-–]+/, '').trim(); if (!v && lines[i + 1] && !RX_LBL.test(lines[i + 1])) v = lines[i + 1]; RX_LBL.lastIndex = 0;
         const okv = k === 'web' ? /^(https?:\/\/|www\.)|\.[a-z]{2,}(\/|$)/i.test(v) : k === 'phone' ? /\d{3}.*\d{2}/.test(v) : k === 'email' ? /@/.test(v) : true;
-        if (v && okv && !r[k] && k !== 'fax' && v.length < 250) r[k] = v;
+        if (v && okv && !r[k] && k !== 'fax' && (k === 'info' ? v.length < 600 : v.length < 250)) r[k] = v;
       }
     }
     // e-mails
@@ -102,7 +112,7 @@
     if (!r.address) r.address = lines.find(l => l.length < 220 && /(mah\.|mahalle|cad\.|caddesi|sok\.|sokak|bulvar|osb|organize sanayi|no\s*:|\b\d{5}\b.*\/)/i.test(l)) || '';
     const m = r.address.match(/\/\s*([^\/]+?)\s*(\/\s*(t[uü]rkiye|turkey))?\s*$/i); r.city = m ? m[1].replace(/t[uü]rkiye|turkey/i, '').trim() : '';
     // description: longest paragraph
-    r.info = [...d.querySelectorAll('p')].map(p => p.textContent.replace(/\s+/g, ' ').trim()).filter(t => t.length > 60 && !/@|copyright|©|çerez|cookie/i.test(t)).sort((a, b) => b.length - a.length)[0] || '';
+    if (!r.info) r.info = [...d.querySelectorAll('p')].map(p => p.textContent.replace(/\s+/g, ' ').trim()).filter(t => t.length > 60 && !/@|copyright|©|çerez|cookie/i.test(t)).sort((a, b) => b.length - a.length)[0] || '';
     r.info = r.info.slice(0, 400);
     return r;
   }
@@ -124,6 +134,7 @@
       try { rows.push(await read(urls[i])); } catch (e) { fail++; if (NAMES[urls[i]]) rows.push({ company: NAMES[urls[i]], contact: '', title: '', email: '', phone: '', web: '', address: '', city: '', info: '', page: urls[i] }); }
       if (!ext) await new Promise(r => setTimeout(r, 350));
     }
+    dropRepeats(rows);
     $('[data-stop]').hidden = true; $('[data-go]').hidden = false; $('[data-copy]').hidden = !rows.length; $('[data-dl]').hidden = !rows.length;
     const nPhone = rows.filter(r => r.phone).length, nMail = rows.filter(r => r.email).length;
     msg(`Bitti: ${rows.length} firma (telefon ${nPhone}, e-posta ${nMail}${fail ? `, ${fail} sayfa açılmadı` : ''}). “Kopyala”ya bas ve 3. sekmeye yapıştır. / Done: press Copy and paste into tab 3.`);
