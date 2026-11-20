@@ -547,15 +547,24 @@ async function readFile(f){
   $('#b-sheet').value=String(best); $('#b-sheet').hidden=names.length<2; $('#b-sheet-l').hidden=names.length<2;
   return {...sheetToTable(WB.Sheets[names[best]]),sheets:names.length,sheet:names[best]};
 }
+// Column names of HubSpot exports (and our own HubSpot file) are matched first, exactly.
+const EXACT_COL={company:['company name','company','firma','firma adı','şirket'],contact:['yetkili','contact person','ad soyad','full name','yetkili (ad soyad)'],email:['email','e-mail','e-posta'],phone:['phone number','phone','telefon'],mobile:['mobile phone number','cep telefonu','gsm'],title:['job title','görevi','unvan'],web:['website url','website','web','company domain name'],address:['street address','address','adres'],city:['city','şehir'],country:['country/region','country','ülke'],info:['industry','description','about us','faaliyet','ürün / faaliyet'],source:['card source','original source','kaynak'],brands:['taiwanese brands','markalar']};
+function joinNames(){ const lc=B.headers.map(h=>String(h).trim().toLowerCase()); const f=lc.indexOf('first name'), l=lc.indexOf('last name');
+  if(f<0||l<0||lc.some(h=>EXACT_COL.contact.includes(h))) return;
+  B.headers=[...B.headers,'Yetkili (Ad Soyad)']; B.rows=B.rows.map(r=>[...r,[r[f],r[l]].map(x=>String(x||'').trim()).filter(Boolean).join(' ')]); }
 function showMap(){
+  joinNames();
   $('#b-map').hidden=false;
   $('#b-count').textContent=T(`${B.rows.length} satır ve ${B.headers.length} sütun okundu. Sütun eşleştirmesini kontrol et.`,`${B.rows.length} rows, ${B.headers.length} columns read. Check the column mapping.`);
   const opts='<option value="">—</option>'+B.headers.map((h,i)=>`<option value="${i}">${esc(h)}</option>`).join('');
   $('#b-cols').innerHTML=FIELDS.map(([k,l])=>`<div><label for="map-${k}">${l}</label><select id="map-${k}">${opts}</select></div>`).join('');
+  const used=new Set(), lc=B.headers.map(h=>String(h).trim().toLowerCase().replace(/i̇/g,'i')), lcTr=B.headers.map(h=>String(h).trim().toLocaleLowerCase('tr'));
+  const NEVER=/contact owner|record id|lead status|lifecycle|create date|last activity|owner|^id$/i;
   for(const [k,,re] of FIELDS){
-    let idx=B.headers.findIndex(h=>re.test(h)); if(k==='company'&&idx<0) idx=0;
-    const used=FIELDS.filter(([k2])=>k2!==k).map(([k2])=>B.map[k2]);
-    if(idx>=0) $('#map-'+k).value=String(idx);
+    let idx=lc.findIndex((h,i)=>!used.has(i)&&((EXACT_COL[k]||[]).includes(h)||(EXACT_COL[k]||[]).includes(lcTr[i])));
+    if(idx<0) idx=B.headers.findIndex((h,i)=>!used.has(i)&&!NEVER.test(h)&&re.test(h)&&!(k==='company'&&/first name|last name|^ad$|^soyad/i.test(h)));
+    if(k==='company'&&idx<0) idx=0;
+    if(idx>=0){ used.add(idx); $('#map-'+k).value=String(idx); }
   }
   $('#b-run').disabled=!B.rows.length;
 }
