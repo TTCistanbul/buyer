@@ -72,6 +72,8 @@
   // values that repeat on most pages (the association's own address, phone, slogan) are not company data
   function dropRepeats(list) {
     if (list.length < 5) return;
+    const seg = {}; list.forEach(r => r.info.split(' · ').forEach(s => { if (s) seg[s] = (seg[s] || 0) + 1; }));
+    list.forEach(r => { r.info = r.info.split(' · ').filter(s => s && seg[s] < Math.max(3, list.length * 0.3)).join(' · '); });
     for (const k of ['company', 'contact', 'title', 'email', 'phone', 'web', 'address', 'city', 'info']) {
       const n = {}; list.forEach(r => { if (r[k]) n[r[k]] = (n[r[k]] || 0) + 1; });
       for (const [v, c] of Object.entries(n)) if (c >= Math.max(3, list.length * 0.3)) list.forEach(r => { if (r[k] === v) r[k] = k === 'company' ? slugName(r.page) : ''; });
