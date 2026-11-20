@@ -87,7 +87,8 @@
       for (let j = 1; j < parts.length; j += 2) {
         const k = kindOf(parts[j]); if (!k) continue;
         let v = (parts[j + 1] || '').replace(/^[\s:：\-–]+/, '').trim(); if (!v && lines[i + 1] && !RX_LBL.test(lines[i + 1])) v = lines[i + 1]; RX_LBL.lastIndex = 0;
-        if (v && !r[k] && k !== 'fax' && v.length < 250) r[k] = v;
+        const okv = k === 'web' ? /^(https?:\/\/|www\.)|\.[a-z]{2,}(\/|$)/i.test(v) : k === 'phone' ? /\d{3}.*\d{2}/.test(v) : k === 'email' ? /@/.test(v) : true;
+        if (v && okv && !r[k] && k !== 'fax' && v.length < 250) r[k] = v;
       }
     }
     // e-mails
@@ -96,7 +97,7 @@
     // phone
     if (!r.phone) { const ph = (lines.join(' ').match(RX_PHONE) || []).find(p => !ownPhones.has(digits(p))); r.phone = ph || ''; }
     // web: first outside link that is not social and not on the list page
-    if (!r.web) { const w = [...d.querySelectorAll('a[href^="http"]')].map(a => a.href).find(h => { try { const u = new URL(h); const hn = u.hostname.replace(/^www\./, ''); return hn !== host && !SOCIAL.test(hn) && !ownLinks.has(hn); } catch (e) { return false; } }); r.web = w || ''; }
+    if (!r.web) { const w = [...d.querySelectorAll('a[href^="http"]')].map(a => a.href).concat([...d.querySelectorAll('[onclick]')].map(e => (e.getAttribute('onclick').match(/(https?:\/\/[^'"\s)]+)/) || [])[1]).filter(Boolean)).find(h => { try { const u = new URL(h); const hn = u.hostname.replace(/^www\./, ''); return hn !== host && !SOCIAL.test(hn) && !ownLinks.has(hn); } catch (e) { return false; } }); r.web = w || ''; }
     // address fallback
     if (!r.address) r.address = lines.find(l => l.length < 220 && /(mah\.|mahalle|cad\.|caddesi|sok\.|sokak|bulvar|osb|organize sanayi|no\s*:|\b\d{5}\b.*\/)/i.test(l)) || '';
     const m = r.address.match(/\/\s*([^\/]+?)\s*(\/\s*(t[uü]rkiye|turkey))?\s*$/i); r.city = m ? m[1].replace(/t[uü]rkiye|turkey/i, '').trim() : '';
