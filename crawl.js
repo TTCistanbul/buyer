@@ -35,7 +35,7 @@
   // things that belong to the association itself (shown on this list page) are not company data
   const pageText = document.body.innerText;
   const ownMails = new Set((pageText.match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g) || []).map(s => s.toLowerCase()));
-  const ownLinks = new Set(listLinks.map(a => { try { return new URL(a.href).hostname.replace(/^www\./, ''); } catch (e) { return ''; } }));
+  const ownLinks = new Set(listLinks.filter(a => inChrome(a)).map(a => { try { return new URL(a.href).hostname.replace(/^www\./, ''); } catch (e) { return ''; } }));
   const digits = s => s.replace(/\D/g, '').replace(/^90/, '').replace(/^0/, '');
   const RX_PHONE = /(?:\+?90[\s\-.()]*)?\(?0?\s*[2-5]\d{2}\)?[\s\-.]*\d{3}[\s\-.]*\d{2}[\s\-.]*\d{2}/g;
   const ownPhones = new Set((pageText.match(RX_PHONE) || []).map(digits));
@@ -60,10 +60,10 @@
   $('[data-urls]').value = urls.join('\n');
   msg(urls.length ? `${urls.length} firma sayfası bulundu. Kontrol etmek için “Bulunan sayfalar”a bak, sonra Başla. / ${urls.length} company pages found.` : 'Firma sayfası bulunamadı. Bu sayfada firmalar başka sayfalara bağlı değil olabilir; listeyi kopyalayıp yapıştır. / No company pages found.');
   $('[data-x]').onclick = () => { box.remove(); window.__ttcCrawl = null; };
-  window.__ttcCrawl = { show: () => box.scrollIntoView(), get rows() { return rows; } };
+  window.__ttcCrawl = { show: () => box.scrollIntoView(), get rows() { return rows; }, read: u => read(u) };
 
   // --- 3) read one company page
-  const LBL = { contact: ['İsim Soyisim', 'İsim Soyad', 'Ad Soyad', 'Adı Soyadı', 'Yetkili Kişi', 'Yetkili', 'Contact Person', 'Name Surname'], title: ['Görevi', 'Görev', 'Unvanı', 'Ünvanı', 'Unvan', 'Ünvan', 'Position', 'Title'], phone: ['Telefon', 'Tel:', 'Tel.', 'Phone'], fax: ['Faks', 'Fax'], email: ['E-posta', 'E-Posta', 'Eposta', 'E-mail', 'E-Mail', 'Email', 'Mail:', 'Mail'], info: ['Faaliyet Alanları', 'Faaliyet Alanı', 'Faaliyet Konusu', 'Faaliyet', 'Ürünler', 'Activities'], web: ['Web Sitesi', 'Web Site', 'Website', 'Web Adresi', 'Web:'], address: ['Adres', 'Address'] };
+  const LBL = { contact: ['İsim Soyisim', 'İsim Soyad', 'Ad Soyad', 'Adı Soyadı', 'Yetkili Kişi', 'Yetkili', 'Contact Person', 'Name Surname'], title: ['Görevi', 'Görev', 'Unvanı', 'Ünvanı', 'Unvan', 'Ünvan', 'Position', 'Title'], phone: ['Telefon', 'Tel:', 'Tel.', 'Phone'], fax: ['Faks', 'Fax'], email: ['E-posta', 'E-Posta', 'Eposta', 'E-mail', 'E-Mail', 'Email', 'Mail:', 'Mail'], info: ['Faaliyet Alanları', 'Faaliyet Alanı', 'Faaliyet Konusu', 'Faaliyet', 'Ürünler', 'Activities'], web: ['Web Sitesi', 'Web Site', 'Website', 'Web Adresi', 'Web:', 'Site'], address: ['Adres', 'Address'] };
   const ALL = Object.entries(LBL).flatMap(([k, a]) => a.flatMap(l => [[l, k], [l.toLocaleUpperCase('tr'), k]]));
   const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const RX_LBL = new RegExp('(' + ALL.map(x => esc(x[0])).sort((a, b) => b.length - a.length).join('|') + ')\\s*:?\\s*', 'g');
