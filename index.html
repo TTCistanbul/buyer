@@ -475,20 +475,25 @@ const RX_URL=/^(https?:\/\/|www\.)\S+$/i, RX_MAIL=/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/
 const RX_LABEL=/^(contact|iletişim|iletisim|address|adres|web|website|web sitesi|e-?mail|e-?posta|phone|tel|telefon|fax|faks|details|detay|more|devamı|devami|view|incele)\s*:?$/i;
 const RX_ADDR_LABEL=/^(address|adres)\s*:?$/i;
 function parseCards(lines){
-  const L=lines.map(l=>l.trim());
+  const L=lines.map(l=>l.trim().replace(/^[*•\-–]\s+/,'').replace(/\[([^\]]*)\]\((?:mailto:)?[^)]*\)/g,'$1').trim()).filter(Boolean);
   const sig=L.filter(l=>RX_URL.test(l)||RX_MAIL.test(l)||RX_TEL.test(l)).length;
   if(L.length<6||sig<L.length*0.2) return null;
-  const recs=[]; let cur=null, expectAddr=false;
+  const isField=l=>RX_URL.test(l)||RX_MAIL.test(l)||(RX_TEL.test(l)&&/\d{7}/.test(l.replace(/\D/g,'')));
+  const isLabel=l=>RX_LABEL.test(l);
+  const looksAddr=l=>/\/\s*[^\/]+$/.test(l)||/(mah\b|mah\.|mahalle|cad\b|cad\.|caddesi|sok\b|sok\.|sokak|bulvar|blv|no\s*:|osb\b|sanayi bolgesi|sanayi bölgesi|sitesi|kat\s*:|\b\d{5}\b)/i.test(l);
+  const recs=[]; let cur=null, inAddr=false;
   const start=()=>{ cur={company:'',web:'',email:'',phone:'',address:''}; recs.push(cur); };
   const put=(k,v)=>{ if(!cur||cur[k]) start(); cur[k]=v; };
-  for(const l of L){
-    if(RX_ADDR_LABEL.test(l)){ expectAddr=true; continue; }
-    if(RX_LABEL.test(l)) continue;
-    if(RX_URL.test(l)){ put('web',l); expectAddr=false; continue; }
-    if(RX_MAIL.test(l)){ put('email',l); expectAddr=false; continue; }
-    if(RX_TEL.test(l)&&/\d{7}/.test(l.replace(/\D/g,''))){ if(cur&&cur.phone&&!cur.address&&cur.phone.split(' / ').length<3) cur.phone+=' / '+l; else put('phone',l); expectAddr=false; continue; }
-    if(expectAddr){ if(!cur) start(); cur.address=cur.address?cur.address+' '+l:l; expectAddr=false; continue; }
-    // free text = a company name, unless the current card has nothing but a name yet
+  for(let i=0;i<L.length;i++){ const l=L[i], nx=L[i+1]||'';
+    if(RX_ADDR_LABEL.test(l)){ inAddr=true; continue; }
+    if(isLabel(l)){ inAddr=false; continue; }
+    if(RX_URL.test(l)){ put('web',l); inAddr=false; continue; }
+    if(RX_MAIL.test(l)){ put('email',l); inAddr=false; continue; }
+    if(isField(l)){ if(cur&&cur.phone&&!cur.address&&cur.phone.split(' / ').length<3) cur.phone+=' / '+l; else put('phone',l); inAddr=false; continue; }
+    // a free-text line followed by "Contact"/web/e-mail starts a new company, unless it is clearly part of an address
+    const startsCard=(isLabel(nx)&&!RX_ADDR_LABEL.test(nx))||RX_URL.test(nx)||RX_MAIL.test(nx);
+    if(inAddr&&cur&&!(startsCard&&!looksAddr(l))){ cur.address=cur.address?cur.address+', '+l:l; continue; }
+    inAddr=false;
     if(!cur||cur.company||cur.web||cur.email||cur.phone||cur.address) start();
     cur.company=l;
   }
@@ -497,8 +502,9 @@ function parseCards(lines){
     if(!c&&r.address) c=r.address.split(',')[0].trim();
     if(!c&&r.web) c=r.web.replace(/^(https?:\/\/)?(www\.)?/i,'').split(/[\/.]/)[0].toUpperCase();
     if(!c&&r.email) c=r.email.split('@')[1].split('.')[0].toUpperCase();
-    const city=(r.address.match(/([A-Za-zÇĞİÖŞÜçğıöşü]+)\s*\/\s*([A-Za-zÇĞİÖŞÜçğıöşü]+)\s*$/)||[])[2]||'';
-    return [c,r.web,r.email,r.phone,r.address,city,'Türkiye'];
+    const m=r.address.match(/([^,\/]+)\s*\/\s*([^,\/]+)\s*$/); let city='', country='Türkiye';
+    if(m){ const a=m[1].trim(), b=m[2].trim(); if(/^(t[uü]rkiye|turkey)$/i.test(b)) city=a.split(/\s+/).slice(-1)[0]; else city=b; }
+    return [c,r.web,r.email,r.phone,r.address,city,country];
   });
   return out.length?{headers:['Firma','Web','E-posta','Telefon','Adres','Şehir','Ülke'],rows:out}:null;
 }
@@ -660,18 +666,18 @@ const fold=x=>String(x||'').toLocaleLowerCase('tr').normalize('NFD').replace(/[�
 const RX_EXCL=/\b(dernegi?|federasyonu?|vakfi|odasi|birligi|fuarcilik|fuar|medya|dergisi?|yayincilik|yayinlari|gazetesi?|televizyon|radyo|akaryakit|association|federation|chamber|magazine|media|publishing)\b/;
 const RX_PART=/\b(turkiye|turkey|istanbul) (subesi|irtibat|ofisi|office|branch)\b|\b(subesi|irtibat burosu|branch office)\b/;
 const RX_IMP=/(ithalat|ithal\b|ihracat|dis ticaret|distrib|\bbayi|temsilci|import|export|trading|toptan|wholesale|tedarik|supply|pazarlama)/;
-const RX_MAKE=/(uretim|uretici|imalat|fabrika|manufactur|production|factory|makin[ae] (san|imal)|machinery)/;
+const RX_MAKE=/(uretim|uretici|imalat|fabrika|manufactur|production|factory|makin[ae] (san|imal|iml)|\biml\b|machinery)/;
 const RX_IMP2=/(ithalat|ithal\b|distrib|\bbayi|yetkili satici|temsilci|import|toptan|wholesale)/, RX_TRADE=/(dis ticaret|trading|pazarlama)/;
 const RX_EXPORT=/(ihracat|ihracatci|export)/;
 const FACTORY_SHOWS=['TIMTOS','TAIPEI AMPA','TAITRONICS','Energy Taiwan','COMPUTEX','TADTE','FOOD TAIPEI','TAIPEI CYCLE'];
-const ROLE_W=new Set('importer importers distributor distributors dealer dealers wholesaler wholesalers supplier suppliers buyer buyers retailer retailers chain chains contractor contractors integrator integrators manufacturer manufacturers maker makers procurement company companies firm firms brand brands agent agents reseller resellers shop shops store stores operator operators user users end and for of the with ithalatcisi ithalatcilari ithalatci distributoru distributorleri distributor bayi bayileri bayisi toptancisi toptancilari toptanci tedarikcisi tedarikcileri alicisi alicilari ureticisi ureticileri uretici firmalari firmasi firma sirketleri sirketi zinciri zincirleri magazasi magazalari magazalar satin alma alim temsilcisi entegratoru entegratorleri muteahhidi muteahhitleri perakendecisi perakendeciler ve ile icin satici saticilari kullanicilari isletmeleri'.split(' '));
+const ROLE_W=new Set('importer importers distributor distributors dealer dealers wholesaler wholesalers supplier suppliers buyer buyers retailer retailers chain chains contractor contractors integrator integrators manufacturer manufacturers maker makers procurement company companies firm firms brand brands agent agents reseller resellers shop shops store stores operator operators user users end and for of the with ithalatcisi ithalatcilari ithalatci distributoru distributorleri distributor bayi bayileri bayisi toptancisi toptancilari toptanci tedarikcisi tedarikcileri alicisi alicilari ureticisi ureticileri uretici firmalari firmasi firma sirketleri sirketi zinciri zincirleri magazasi magazalari magazalar satin alma alim temsilcisi entegratoru entegratorleri muteahhidi muteahhitleri perakendecisi perakendeciler ve ile icin satici saticilari kullanicilari isletmeleri turkiye turkey turk turkish istanbul ankara izmir bursa local yerli'.split(' '));
 const GENERIC_W=new Set('urun urunleri urunler product products part parts parca parcalari parcasi sistem sistemleri systems system ekipman ekipmanlari ekipmanlar equipment malzeme malzemeleri materials material solution solutions cozum cozumleri teknoloji teknolojileri technology technologies aksesuar aksesuarlari accessories yedek spare cihaz cihazlari device devices makine makineleri machine machines'.split(' '));
 const KW_CACHE={};
 function showTerms(show){ const k=kwKey(show||''); if(!k) return []; if(KW_CACHE[k]) return KW_CACHE[k];
   const out=[];
   for(const [zone,en,tr] of KW[k]) for(const ph of [zone==='*'?'':zone,...String(en).split(','),...String(tr).split(',')]){
     const ws=fold(ph).split(/[^a-z0-9]+/).filter(w=>w.length>=3&&!ROLE_W.has(w)); if(!ws.length||ws.every(w=>GENERIC_W.has(w))||(ws.length===1&&ws[0].length<4)) continue;
-    out.push({zone,label:ws.join(' '),stems:ws.map(w=>w.slice(0,Math.max(3,Math.min(w.length,6))))}); }
+    const core=ws.filter(w=>!GENERIC_W.has(w)); out.push({zone,label:core.join(' '),stems:core.map(w=>w.slice(0,Math.max(3,Math.min(w.length,6))))}); }
   return KW_CACHE[k]=out; }
 function gradeByRules(company,info,tb,repr,show){
   const c=fold(company), t=c+' '+fold(info), hit=re=>{ const m=t.match(re); return m?m[0].trim():''; };
