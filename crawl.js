@@ -68,7 +68,7 @@
       const parts = lines[i].split(RX_LBL);
       for (let j = 1; j < parts.length; j += 2) {
         const k = kindOf(parts[j]); if (!k) continue;
-        let v = (parts[j + 1] || '').trim(); if (!v && lines[i + 1] && !RX_LBL.test(lines[i + 1])) v = lines[i + 1]; RX_LBL.lastIndex = 0;
+        let v = (parts[j + 1] || '').replace(/^[\s:：\-–]+/, '').trim(); if (!v && lines[i + 1] && !RX_LBL.test(lines[i + 1])) v = lines[i + 1]; RX_LBL.lastIndex = 0;
         if (v && !r[k] && k !== 'fax' && v.length < 250) r[k] = v;
       }
     }

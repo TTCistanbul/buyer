@@ -212,7 +212,16 @@ button{border-radius:999px}
     </div>
   </details>
   <div><label for="b-text"><span data-l="tr">…veya yapıştır</span><span data-l="en">…or paste</span></label>
-  <textarea id="b-text" placeholder="Firma&#9;Ülke&#9;Telefon&#9;Markalar&#10;KOLAT MOTOR A.Ş (FALCON)&#9;Türkiye&#9;&#9;FALCON&#10;…"></textarea>
+  <details style="margin:0 0 8px;border:1px dashed var(--line);border-radius:8px;padding:6px 10px"><summary><b>🔗 <span data-l="tr">Firmalar ayrı sayfalardaysa (sadece logo varsa): Üye tarayıcı</span><span data-l="en">Companies on separate pages (logos only)? Member crawler</span></b></summary>
+  <ol class="hint" style="margin:6px 0 0;padding-left:18px">
+    <li><span data-l="tr">Bu düğmeyi fareyle tutup tarayıcının yer imleri çubuğuna sürükle (bir kere yeterli):</span><span data-l="en">Drag this button to your bookmarks bar (once):</span> <a href="javascript:(()=>{var s=document.createElement('script');s.src='https://ttcistanbul.github.io/buyer/crawl.js?'+Date.now();s.onerror=()=>alert('Bu site eklentiye izin vermiyor. Adresi Eva’ya gönder.');document.body.appendChild(s)})()" onclick="event.preventDefault();alert(this.dataset.msg)" data-msg="Bu düğmeye burada basma; yer imleri çubuğuna sürükle. / Don't click here; drag it to the bookmarks bar." style="display:inline-block;padding:3px 10px;border-radius:999px;background:#1d6b3a;color:#fff;text-decoration:none;font-weight:600">🔗 Üye tarayıcı</a></li>
+    <li><span data-l="tr">Derneğin üye listesi sayfasını aç ve yer imindeki “🔗 Üye tarayıcı”ya bas.</span><span data-l="en">Open the association’s member list page and click “🔗 Üye tarayıcı” in your bookmarks.</span></li>
+    <li><span data-l="tr">Sağ altta kutu açılır: bulunan sayfaları kontrol et, “Başla”ya bas. Her firma sayfası okunur (40 firma ≈ 30 saniye).</span><span data-l="en">A box opens at the bottom right: check the pages found, press Start. Each company page is read (40 companies ≈ 30 seconds).</span></li>
+    <li><span data-l="tr">“Kopyala”ya bas, buraya yapıştır.</span><span data-l="en">Press Copy, paste here.</span></li>
+  </ol>
+  <p class="hint" style="margin:4px 0 0"><span data-l="tr">Telefon, web, adres ve yetkili genelde bulunur; sayfada yazmıyorsa e-posta boş kalır. Çalışmazsa adresi Eva’ya gönder.</span><span data-l="en">Phone, web, address and contact are usually found; e-mail stays empty if the page has none. If it does not work, send the address to Eva.</span></p>
+</details>
+<textarea id="b-text" placeholder="Firma&#9;Ülke&#9;Telefon&#9;Markalar&#10;KOLAT MOTOR A.Ş (FALCON)&#9;Türkiye&#9;&#9;FALCON&#10;…"></textarea>
   <p class="hint"><span data-l="tr">Excel’den kopyalanmış tablo veya her satıra bir firma.</span><span data-l="en">A table copied from Excel, or one company per line.</span></p></div>
   <div class="btns"><button id="b-read" class="primary"><span data-l="tr">Oku ve puanla</span><span data-l="en">Read and grade</span></button><button id="b-xstop" hidden><span data-l="tr">Durdur</span><span data-l="en">Stop</span></button></div>
   <details id="l-box" class="lbox">
