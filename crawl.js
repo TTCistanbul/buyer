@@ -5,7 +5,7 @@
 (() => {
   if (window.__ttcCrawl) { window.__ttcCrawl.show(); return; }
   const host = location.hostname.replace(/^www\./, '');
-  const SKIP = /(iletisim|contact|hakkimizda|hakkinda|about|haber|news|duyuru|announce|kurumsal|corporate|uyelik|membership|basvuru|etkinlik|event|galeri|gallery|blog|category|kategori|tag|etiket|page\/\d|wp-|feed|login|giris|kvkk|gizlilik|privacy|cerez|cookie|yonetim|board|tuzuk|mevzuat|yayin|publication|rapor|report|sitemap|search|arama|\.pdf|\.jpe?g|\.png|\.docx?|\.xlsx?)/i;
+  const SKIP = /(iletisim|contact|hakkimizda|hakkinda|about|haber|news|duyuru|announce|kurumsal|corporate|uyelik|membership|basvuru|etkinlik|event|galeri|gallery|blog|category|kategori|tag|etiket|page\/\d|bot-check|captcha|cdn-cgi|wp-|feed|login|giris|kvkk|gizlilik|privacy|cerez|cookie|yonetim|board|tuzuk|mevzuat|yayin|publication|rapor|report|sitemap|search|arama|\.pdf|\.jpe?g|\.png|\.docx?|\.xlsx?)/i;
   const SOCIAL = /(facebook|instagram|twitter|x\.com|linkedin|youtube|tiktok|wa\.me|whatsapp|google\.|goo\.gl|apple\.com|play\.google|t\.me|pinterest|flickr|vimeo)/i;
 
   // --- 1) candidate member links on this page
@@ -25,6 +25,7 @@
   const RX_PHONE = /(?:\+?90[\s\-.()]*)?\(?0?\s*[2-5]\d{2}\)?[\s\-.]*\d{3}[\s\-.]*\d{2}[\s\-.]*\d{2}/g;
   const ownPhones = new Set((pageText.match(RX_PHONE) || []).map(digits));
 
+  let rows = [];
   // --- 2) panel
   const box = document.createElement('div');
   box.style.cssText = 'position:fixed;z-index:2147483647;right:16px;bottom:16px;width:380px;max-width:94vw;background:#fff;color:#222;border:2px solid #1d6b3a;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.25);font:14px/1.45 system-ui,sans-serif;padding:14px';
@@ -44,7 +45,7 @@
   $('[data-urls]').value = urls.join('\n');
   msg(urls.length ? `${urls.length} firma sayfası bulundu. Kontrol etmek için “Bulunan sayfalar”a bak, sonra Başla. / ${urls.length} company pages found.` : 'Firma sayfası bulunamadı. Bu sayfada firmalar başka sayfalara bağlı değil olabilir; listeyi kopyalayıp yapıştır. / No company pages found.');
   $('[data-x]').onclick = () => { box.remove(); window.__ttcCrawl = null; };
-  window.__ttcCrawl = { show: () => box.scrollIntoView() };
+  window.__ttcCrawl = { show: () => box.scrollIntoView(), get rows() { return rows; } };
 
   // --- 3) read one company page
   const LBL = { contact: ['İsim Soyisim', 'İsim Soyad', 'Ad Soyad', 'Adı Soyadı', 'Yetkili Kişi', 'Yetkili', 'Contact Person', 'Name Surname'], title: ['Görevi', 'Görev', 'Unvanı', 'Ünvanı', 'Unvan', 'Ünvan', 'Position', 'Title'], phone: ['Telefon', 'Tel:', 'Tel.', 'Tel ', 'Phone'], fax: ['Faks', 'Fax'], email: ['E-posta', 'E-Posta', 'Eposta', 'E-mail', 'E-Mail', 'Email'], web: ['Web Sitesi', 'Web Site', 'Website', 'Web Adresi', 'Web:'], address: ['Adres', 'Address'] };
@@ -88,7 +89,7 @@
   }
 
   // --- 4) run
-  let stop = false, rows = [];
+  let stop = false;
   const H = ['Firma', 'Yetkili', 'Görevi', 'E-posta', 'Telefon', 'Web', 'Adres', 'Şehir', 'Faaliyet', 'Sayfa'];
   const tsv = () => [H.join('\t'), ...rows.map(r => [r.company, r.contact, r.title, r.email, r.phone, r.web, r.address, r.city, r.info, r.page].map(c => String(c || '').replace(/[\t\r\n]+/g, ' ')).join('\t'))].join('\n');
   $('[data-stop]').onclick = () => { stop = true; };
