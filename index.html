@@ -201,7 +201,7 @@ button{border-radius:999px}
     <div><label for="b-show"><span data-l="tr">Hedef Tayvan fuarı</span><span data-l="en">Target Taiwan show</span></label><select id="b-show"></select></div>
     <div><label for="b-src"><span data-l="tr">Liste kaynağı</span><span data-l="en">List source</span></label><input type="text" id="b-src" list="src-names" autocomplete="off" placeholder="örn. Motobike İstanbul 2026 katılımcı listesi" data-t-placeholder="örn. Motobike İstanbul 2026 katılımcı listesi|e.g. Motobike Istanbul 2026 exhibitor list"><datalist id="src-names"></datalist><div class="hint" id="b-src-warn" style="margin:4px 0 0;color:var(--warn,#b45309);font-weight:600"></div></div>
   </div>
-  <div class="btns"><button id="b-file-btn">📄 <span data-l="tr">Excel / CSV dosyası seç</span><span data-l="en">Choose an Excel or CSV file</span></button><input type="file" id="b-file" accept=".xlsx,.xls,.csv,.tsv,.txt" hidden><span class="hint" id="b-file-name"></span>
+  <div class="btns"><button id="b-file-btn">📄 <span data-l="tr">Excel / CSV dosyası seç (birden fazla olabilir)</span><span data-l="en">Choose Excel or CSV files (several at once is fine)</span></button><input type="file" id="b-file" accept=".xlsx,.xls,.csv,.tsv,.txt" multiple hidden><span class="hint" id="b-file-name"></span>
     <label for="b-sheet" class="hint" style="margin:0" hidden id="b-sheet-l"><span data-l="tr">Sayfa</span><span data-l="en">Sheet</span></label><select id="b-sheet" style="width:auto;padding:6px 8px" hidden></select></div>
   <details id="b-tw">
     <summary><b><span data-l="tr">Tayvan marka listesi</span><span data-l="en">Taiwanese brand list</span></b> — <span id="b-tw-n"></span></summary>
@@ -539,8 +539,10 @@ function sheetToTable(ws){
   return {headers,rows:aoa.slice(hi+1).filter(r=>r.some(c=>String(c).trim())).map(r=>headers.map((_,i)=>String(r[i]??'').trim()))};
 }
 // A workbook with several sheets: offer them all, start on the one with the most rows.
+// Text files are read as UTF-8 (Turkish letters stay right); spreadsheets as binary.
+async function readWB(f){ if(/\.(csv|tsv|txt)$/i.test(f.name)){ const s=new TextDecoder('utf-8').decode(await f.arrayBuffer()).replace(/^\ufeff/,''); return XLSX.read(s,{type:'string'}); } return XLSX.read(await f.arrayBuffer(),{type:'array'}); }
 async function readFile(f){
-  const buf=await f.arrayBuffer(); WB=XLSX.read(buf,{type:'array'});
+  WB=await readWB(f);
   const names=WB.SheetNames; const sizes=names.map(n=>sheetToTable(WB.Sheets[n]).rows.length);
   const best=sizes.indexOf(Math.max(...sizes));
   $('#b-sheet').innerHTML=names.map((n,i)=>`<option value="${i}">${esc(n)} (${sizes[i]})</option>`).join('');
@@ -552,6 +554,28 @@ const EXACT_COL={company:['company name','company','firma','firma adı','şirket
 function joinNames(){ const lc=B.headers.map(h=>String(h).trim().toLowerCase()); const f=lc.indexOf('first name'), l=lc.indexOf('last name');
   if(f<0||l<0||lc.some(h=>EXACT_COL.contact.includes(h))) return;
   B.headers=[...B.headers,'Yetkili (Ad Soyad)']; B.rows=B.rows.map(r=>[...r,[r[f],r[l]].map(x=>String(x||'').trim()).filter(Boolean).join(' ')]); }
+function guessMap(headers){ const used=new Set(), m={}, lc=headers.map(h=>String(h).trim().toLowerCase().replace(/i̇/g,'i')), lcTr=headers.map(h=>String(h).trim().toLocaleLowerCase('tr'));
+  const NEVER=/contact owner|record id|lead status|lifecycle|create date|last activity|owner|^id$/i;
+  for(const [k,,re] of FIELDS){
+    let idx=lc.findIndex((h,i)=>!used.has(i)&&((EXACT_COL[k]||[]).includes(h)||(EXACT_COL[k]||[]).includes(lcTr[i])));
+    if(idx<0) idx=headers.findIndex((h,i)=>!used.has(i)&&!NEVER.test(h)&&re.test(h)&&!(k==='company'&&/first name|last name|^ad$|^soyad/i.test(h)));
+    if(k==='company'&&idx<0) idx=0;
+    if(idx>=0){ used.add(idx); m[k]=idx; } }
+  return m; }
+// Several files (and every sheet with data) at once: each becomes its own list, named after the file (and sheet).
+const MULTI_HEAD=['Firma','Yetkili','Görevi','E-posta','Telefon','Cep telefonu','Web','Adres','Şehir','Ülke','Diğer bilgi','Markalar','Kaynak'];
+const MULTI_KEYS=['company','contact','title','email','phone','mobile','web','address','city','country','info','brands','source'];
+async function readMany(files){
+  const out=[], lists=[];
+  for(const f of files){ const wb=await readWB(f); const base=f.name.replace(/\.[^.]+$/,'').replace(/[_]+/g,' ').trim();
+    const sheets=wb.SheetNames.map(n=>({n,tb:sheetToTable(wb.Sheets[n])})).filter(s=>s.tb.rows.length);
+    for(const s of sheets){ let {headers,rows}=s.tb; const j=joinNamesOf(headers,rows); headers=j.headers; rows=j.rows; const m=guessMap(headers);
+      const name=(sheets.length>1?`${base} – ${s.n}`:base).slice(0,200); lists.push({name,count:rows.length});
+      for(const r of rows){ const v=MULTI_KEYS.map(k=>k==='source'?(m.source!=null&&String(r[m.source]||'').trim()||name):(m[k]!=null?String(r[m[k]]??'').trim():'')); if(v[0]) out.push(v); } } }
+  return {headers:MULTI_HEAD,rows:out,lists}; }
+function joinNamesOf(headers,rows){ const lc=headers.map(h=>String(h).trim().toLowerCase()); const f=lc.indexOf('first name'), l=lc.indexOf('last name');
+  if(f<0||l<0||lc.some(h=>EXACT_COL.contact.includes(h))) return {headers,rows};
+  return {headers:[...headers,'Yetkili (Ad Soyad)'],rows:rows.map(r=>[...r,[r[f],r[l]].map(x=>String(x||'').trim()).filter(Boolean).join(' ')])}; }
 function showMap(){
   joinNames();
   $('#b-map').hidden=false;
@@ -560,17 +584,18 @@ function showMap(){
   $('#b-cols').innerHTML=FIELDS.map(([k,l])=>`<div><label for="map-${k}">${l}</label><select id="map-${k}">${opts}</select></div>`).join('');
   const used=new Set(), lc=B.headers.map(h=>String(h).trim().toLowerCase().replace(/i̇/g,'i')), lcTr=B.headers.map(h=>String(h).trim().toLocaleLowerCase('tr'));
   const NEVER=/contact owner|record id|lead status|lifecycle|create date|last activity|owner|^id$/i;
-  for(const [k,,re] of FIELDS){
-    let idx=lc.findIndex((h,i)=>!used.has(i)&&((EXACT_COL[k]||[]).includes(h)||(EXACT_COL[k]||[]).includes(lcTr[i])));
-    if(idx<0) idx=B.headers.findIndex((h,i)=>!used.has(i)&&!NEVER.test(h)&&re.test(h)&&!(k==='company'&&/first name|last name|^ad$|^soyad/i.test(h)));
-    if(k==='company'&&idx<0) idx=0;
-    if(idx>=0){ used.add(idx); $('#map-'+k).value=String(idx); }
-  }
+  const gm=guessMap(B.headers); for(const [k] of FIELDS) if(gm[k]!=null) $('#map-'+k).value=String(gm[k]);
   $('#b-run').disabled=!B.rows.length;
 }
 $('#b-file-btn').addEventListener('click',e=>{ e.preventDefault(); $('#b-file').click(); });
 $('#b-file').addEventListener('change',async e=>{ if(e.target.files[0]) $('#b-file-name').textContent=e.target.files[0].name;
   const f=e.target.files[0]; if(!f) return;
+  if(e.target.files.length>1){ try{ B.foundIds=null; B.local=false; const r=await readMany([...e.target.files]); B.readAt=new Date().toISOString(); B.headers=r.headers; B.rows=r.rows; B.lists=r.lists;
+      $('#b-file-name').textContent=T(`${r.lists.length} liste`,`${r.lists.length} lists`); $('#b-src').value=''; $('#b-sheet').hidden=true; $('#b-sheet-l').hidden=true; showMap();
+      $('#b-status').textContent=T(`${r.lists.length} liste okundu, toplam ${r.rows.length} firma. Kaynak sütunu dosya adıdır.`,`${r.lists.length} lists read, ${r.rows.length} companies in total. The Source column is the file name.`); srcWarn(); autoGrade(); }
+    catch(err){ $('#b-status').textContent=T('Dosyalar okunamadı: ','Could not read the files: ')+(err.message||err); }
+    e.target.value=''; return; }
+  B.lists=null; B.readAt=new Date().toISOString();
   try{ B.foundIds=null; B.local=false; const r=await readFile(f); B.headers=r.headers; B.rows=r.rows; showMap(); $('#b-status').textContent=T('Dosya okundu: ','File read: ')+f.name+(r.sheets>1?T(` · ${r.sheets} sayfa var, “${r.sheet}” seçildi; başka sayfa için yukarıdan seç`,` · ${r.sheets} sheets, “${r.sheet}” picked; choose another above`):''); autoGrade(); }
   catch(err){ $('#b-status').textContent=T('Dosya okunamadı. Dosyanın Excel veya CSV olduğundan emin ol.','Could not read the file.'); }
 });
@@ -612,6 +637,7 @@ $('#b-xstop').addEventListener('click',()=>xabort&&xabort.abort());
 $('#b-read').addEventListener('click',async()=>{
   const text=$('#b-text').value;
   if(!text.trim()){ if(B.rows.length){ autoGrade(); return; } $('#b-status').textContent=T('Önce dosya seç veya listeyi yapıştır','Choose a file or paste a list first'); return; }
+  B.lists=null; B.readAt=new Date().toISOString();
   if(isTable(text)||!sample){ /* no AI: tables, or one company per line */ B.foundIds=null; B.local=false; const r=parseText(text); B.headers=r.headers; B.rows=r.rows; showMap(); autoGrade(); return; }
   B.foundIds=null; B.local=false; const list=await extractWithClaude(text,'b');
   if(!list.length){ $('#b-status').textContent=T('Firma bulunamadı','No companies found'); return; }
@@ -686,12 +712,13 @@ $('#b-run').addEventListener('click',async()=>{
   for(const i of todo){ const row=B.rows[i];
     const srcs=[g(row,'brands'),bracketed(g(row,'company')),...(extra[i]||[])];
     const tb=[...new Set(srcs.flatMap(twMatches))]; const amb=[...new Set(srcs.flatMap(twAmbig))].filter(b=>!tb.includes(b));
-    B.results[i]={...gradeByRules(g(row,'company'),String(g(row,'info')||'')+' '+String(g(row,'brands')||''),tb,extra[i]||[],show,{web:g(row,'web'),email:g(row,'email')}),taiwan_brands:tb,tb_unverified:amb,repr:extra[i]||[]};
+    B.results[i]={...gradeByRules(g(row,'company'),String(g(row,'info')||'')+' '+String(g(row,'brands')||''),tb,extra[i]||[],show,{web:g(row,'web'),email:g(row,'email'),src:String(g(row,'source')||'')}),taiwan_brands:tb,tb_unverified:amb,repr:extra[i]||[]};
   }
   B.tick=B.results.map(()=>false);
   $('#b-run').disabled=false; renderB();
   $('#b-status').textContent=T(`Tamamlandı · ${B.rows.length-nExcl()} firma listede, ${nExcl()} çıkarıldı${matched?` · ${matched} telefon eşleşmesi`:''}`,`Done · ${B.rows.length-nExcl()} kept, ${nExcl()} removed${matched?` · ${matched} phone matches`:''}`);
-  logList({rows:B.rows.length-nExcl()});
+  if(B.lists){ const gs=B.map.source; B.lists.forEach(L=>logList({rows:B.rows.filter((r,i)=>String(r[gs]||'')===L.name&&!(B.results[i]&&B.results[i].priority==='EXCLUDE')).length},L.name)); }
+  else logList({rows:B.rows.length-nExcl()});
 });
 // Grading by rules (no AI): Taiwanese brands on the office list first, then words in the company name and activity.
 const fold=x=>String(x||'').toLocaleLowerCase('tr').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/ı/g,'i');
@@ -733,7 +760,7 @@ function gradeByRules(company,info,tb,repr,show,ids){
   // 4) Taiwanese brands
   if(tb.length){ const p=Math.min(tb.length,3)*2; score+=p; tr.push(`${tb.length} Tayvan markası (+${p})`); en.push(`${tb.length} Taiwanese brand${tb.length>1?'s':''} (+${p})`); }
   // 5) already in the shared list from another source
-  if(SHARED&&!B.local){ const oi=findCo({company,web:(ids&&ids.web)||'',email:(ids&&ids.email)||''}); const o=oi>=0?LOCAL[oi]:null; const src=$('#b-src').value.trim();
+  if(SHARED&&!B.local){ const oi=findCo({company,web:(ids&&ids.web)||'',email:(ids&&ids.email)||''}); const o=oi>=0?LOCAL[oi]:null; const src=(ids&&ids.src)||$('#b-src').value.trim();
     const other=o?srcList(o).filter(s=>fold(s)!==fold(src)):[];
     if(other.length){ const p=Math.min(other.length,3)*2; score+=p; tr.push(`${other.length} başka listede de var: ${other.join(', ')} (+${p})`); en.push(`Also on ${other.length} other list${other.length>1?'s':''}: ${other.join(', ')} (+${p})`); }
     else if(o){ tr.push('Zaten ortak listede'); en.push('Already in the shared list'); } }
@@ -859,7 +886,7 @@ function addLocal(v,fillOnly){ const i=findCo(v);
   if(i>=0){ const add=Object.fromEntries(Object.entries(v).filter(([k,x])=>x&&k!=='company'&&(k==='source'||!(fillOnly&&LOCAL[i][k]))));
     if(!Object.keys(add).length) return false;
     LOCAL[i]={...LOCAL[i],...add}; cloudPut({...add,_id:LOCAL[i]._id},false,false); return false; }
-  LOCAL.push(v); cloudPut(v,true,false); return true; }
+  if(SHARED) v={...v,_id:bid(v.company)}; LOCAL.push(v); cloudPut(v,true,false); return true; }
 function renderLocal(){
   $('#l-count').textContent=LOCAL.length?T(`(${LOCAL.length} firma)`,`(${LOCAL.length} companies)`):'';
   $('#l-grade').disabled=!LOCAL.length; $('#l-clear').disabled=!LOCAL.length;
@@ -989,7 +1016,7 @@ $('#ff-photo').addEventListener('change',async e=>{
 /* ---- HubSpot CSV (same columns as the Kartvizit → HubSpot page) ---- */
 try{ const o=localStorage.getItem('ttcOwner'); if(o) $('#b-owner').value=o; }catch(e){}
 $('#b-owner').addEventListener('change',()=>{ try{ localStorage.setItem('ttcOwner',$('#b-owner').value.trim()); }catch(e){} });
-const FREEMAIL=['gmail','hotmail','yahoo','outlook','yandex','icloud','live','msn','mynet','windowslive'];
+const FREEMAIL=['gmail','hotmail','yahoo','outlook','yandex','icloud','live','msn','mynet','windowslive','superonline','ttmail','turk','isnet','e-kolay','protonmail','proton','aol','gmx','zoho','mail','me','ymail','rocketmail','googlemail'];
 const domainOf=x=>{ const w=String(x.web||'').replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].toLowerCase(); if(w) return w; const d=(String(x.email||'').split('@')[1]||'').toLowerCase(); return d&&!FREEMAIL.some(f=>d.startsWith(f+'.'))?d:''; };
 const csvCell=v=>{ v=v==null?'':String(v); return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
 // HubSpot CSV builder for the graded list on tab 3. Grade is always in English for HubSpot.
@@ -1022,7 +1049,8 @@ $('#b-share').addEventListener('click',()=>{
     const v={company:g(r,'company'),contact:g(r,'contact'),title:g(r,'title'),email:g(r,'email'),phone:g(r,'phone'),mobile:g(r,'mobile'),web:g(r,'web'),address:g(r,'address'),city:g(r,'city'),info:g(r,'info'),source:g(r,'source')||src,country:g(r,'country')||'Türkiye'};
     if(!v.company) continue; if(addLocal(v,true)) added++; else upd++; }
   renderLocal();
-  logList({added:firebase.firestore.FieldValue.increment(added)});
+  if(B.lists){ const per={}; idx.forEach(i=>{ const s=g(B.rows[i],'source'); per[s]=(per[s]||0)+1; }); Object.entries(per).forEach(([s,n])=>{ if(B.lists.some(L=>L.name===s)) logList({added:firebase.firestore.FieldValue.increment(n)},s); }); }
+  else logList({added:firebase.firestore.FieldValue.increment(added)});
   $('#b-status').textContent=T(`Ortak listeye ${added} yeni firma eklendi${upd?`, ${upd} firma zaten vardı (boş alanları tamamlandı)`:''}.`,`${added} new companies added to the shared list${upd?`; ${upd} were already there (empty fields filled)`:''}.`);
 });
 $('#b-hs').addEventListener('click',()=>{
@@ -1061,14 +1089,17 @@ document.addEventListener('click',async e=>{ const b=e.target.closest('button[da
 /* ===== Lists already worked through (shared) ===== */
 let LISTS={};
 const listKey=n=>norm(n).slice(0,200);
-function logList(extra){ if(!db||!SHARED||B.local) return; const name=$('#b-src').value.trim(); if(!name) return;
+function logList(extra,nm){ if(!db||!SHARED||B.local) return; const name=(nm||$('#b-src').value).trim(); if(!name) return;
   const now=new Date().toISOString(), who=me()!=='—'?me():AUTHU.email;
   db.collection('lists').doc(listKey(name)).set({name:name.slice(0,200),show:$('#b-show').value.split(' — ')[0].slice(0,80),by:who,byEmail:AUTHU.email,at:now,...extra},{merge:true}).catch(()=>{}); }
 function watchLists(){ if(!db) return; try{ db.collection('lists').onSnapshot(qs=>{ LISTS={}; qs.docs.forEach(d=>LISTS[d.id]=d.data()); renderDone(); srcWarn(); },()=>{}); }catch(e){} }
 const listLine=x=>T(`${x.by||x.byEmail||'—'} · ${fmt(x.at)}${x.rows!=null?` · ${x.rows} firma`:''}${x.added?` · ${x.added} ortak listeye`:''}`,`${x.by||x.byEmail||'—'} · ${fmt(x.at)}${x.rows!=null?` · ${x.rows} companies`:''}${x.added?` · ${x.added} to shared list`:''}`);
 function renderDone(){ document.querySelectorAll('select.how').forEach(el=>{ let b=el.nextElementSibling; if(!b||!b.classList.contains('done')){ b=document.createElement('span'); b.className='done'; el.after(b); }
     const x=LISTS[listKey(el.dataset.k)]; b.hidden=!x; b.textContent=x?' ✅ '+(x.by||'')+' '+fmt(x.at).split(' ')[0]:''; b.title=x?T('Tarandı: ','Done: ')+listLine(x):''; }); }
-function srcWarn(){ const n=$('#b-src').value.trim(), x=n&&LISTS[listKey(n)];
+const doneBefore=n=>{ const x=LISTS[listKey(n)]; return x&&!(AUTHU&&x.byEmail===AUTHU.email&&B.readAt&&String(x.at)>=B.readAt)?x:null; };
+function srcWarn(){ if(B.lists&&B.lists.length){ const done=B.lists.filter(L=>doneBefore(L.name));
+    $('#b-src-warn').textContent=done.length?T(`⚠ Daha önce taranan listeler: `,`⚠ Already done: `)+done.map(L=>`${L.name} (${listLine(LISTS[listKey(L.name)])})`).join(' · '):''; return; }
+  const n=$('#b-src').value.trim(), x=n&&doneBefore(n);
   $('#b-src-warn').textContent=x?T(`⚠ Bu liste daha önce tarandı: ${listLine(x)}`,`⚠ This list was already done: ${listLine(x)}`):''; }
 $('#b-src').addEventListener('input',srcWarn);
 function fillSrcNames(){ const s=new Set(); document.querySelectorAll('select.how').forEach(el=>s.add(el.dataset.k)); Object.values(SRC).flat().forEach(x=>s.add(x.n)); EXTRA.forEach(x=>s.add(x.name));
