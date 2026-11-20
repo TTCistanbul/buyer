@@ -365,6 +365,9 @@ const $=s=>document.querySelector(s);
 let LANG='tr'; try{ const l=localStorage.getItem('tab_lang'); if(l==='en'||l==='tr') LANG=l; }catch(e){}
 document.documentElement.dataset.lang=LANG; document.documentElement.lang=LANG;
 const T=(tr,en)=>LANG==='en'?en:tr;
+// Column names that come from our own lists (Turkish) are shown in English when English is chosen.
+const HDR_EN={'Firma':'Company','Yetkili':'Contact','Yetkili (Ad Soyad)':'Contact','Görevi':'Job title','E-posta':'Email','Telefon':'Phone','Cep telefonu':'Mobile','Web':'Web','Adres':'Address','Şehir':'City','Ülke':'Country','Diğer bilgi':'Other info','Markalar':'Brands','Kaynak':'Source','Faaliyet':'Activity','Sayfa':'Page','Ürün / Faaliyet':'Product / activity','İMDER sayfası':'İMDER page','Sütun':'Column'};
+const HL=h=>T(h,HDR_EN[String(h).trim()]||h);
 // Lazy label for tables built once at load: turns into the current language whenever it is printed.
 class TLabel{ constructor(tr,en){ this.tr=tr; this.en=en; } toString(){ return T(this.tr,this.en); } valueOf(){ return this.toString(); } }
 const TL=(tr,en)=>new TLabel(tr,en);
@@ -580,7 +583,7 @@ function showMap(){
   joinNames();
   $('#b-map').hidden=false;
   $('#b-count').textContent=T(`${B.rows.length} satır ve ${B.headers.length} sütun okundu. Sütun eşleştirmesini kontrol et.`,`${B.rows.length} rows, ${B.headers.length} columns read. Check the column mapping.`);
-  const opts='<option value="">—</option>'+B.headers.map((h,i)=>`<option value="${i}">${esc(h)}</option>`).join('');
+  const opts='<option value="">—</option>'+B.headers.map((h,i)=>`<option value="${i}">${esc(HL(h))}</option>`).join('');
   $('#b-cols').innerHTML=FIELDS.map(([k,l])=>`<div><label for="map-${k}">${l}</label><select id="map-${k}">${opts}</select></div>`).join('');
   const used=new Set(), lc=B.headers.map(h=>String(h).trim().toLowerCase().replace(/i̇/g,'i')), lcTr=B.headers.map(h=>String(h).trim().toLocaleLowerCase('tr'));
   const NEVER=/contact owner|record id|lead status|lifecycle|create date|last activity|owner|^id$/i;
@@ -655,7 +658,7 @@ function autoGrade(){
 }
 function renderPreview(){
   $('#b-out').hidden=false; $('#b-chips').innerHTML='';
-  $('#b-tbl').innerHTML='<tr>'+B.headers.map(h=>`<th>${esc(h)}</th>`).join('')+'</tr>'+B.rows.map(r=>'<tr>'+r.map(c=>`<td>${esc(c)}</td>`).join('')+'</tr>').join('');
+  $('#b-tbl').innerHTML='<tr>'+B.headers.map(h=>`<th>${esc(HL(h))}</th>`).join('')+'</tr>'+B.rows.map(r=>'<tr>'+r.map(c=>`<td>${esc(c)}</td>`).join('')+'</tr>').join('');
 }
 
 const LABEL={HIGH:TL('Yüksek','High'),MEDIUM:TL('Orta','Medium'),NORMAL:'Normal',IMPORTER:TL('İthalatçı','Importer'),MAKER:TL('Üretici alıcı','Maker buyer'),PARTNER:TL('Ortak','Partner'),CHECK:TL('Kontrol','Check'),EXCLUDE:TL('Hariç','Exclude')};
@@ -795,7 +798,7 @@ function renderB(){
   $('#b-chips').innerHTML=`<a href="#b-rules" class="hint" style="align-self:center" onclick="document.getElementById('b-rules').open=true">? ${T('Kurallar','Rules')}</a>`+SHOWN.map(p=>`<button type="button" class="chip" data-gp="${p}" title="${T('Tıkla: bu gruba git ve hepsini işaretle / işareti kaldır','Click: jump to this group and tick / untick all')}" ${cnt[p]?'':'disabled'}><span class="pill p-${p}">${LABEL[p]}</span><b>${cnt[p]||0}</b></button>`).join('')+(nExcl()?`<p class="hint" style="align-self:center">${T(`${nExcl()} firma listeden çıkarıldı (üretici, şube, yabancı katılımcı vb.)`,`${nExcl()} companies removed (makers, branches, foreign exhibitors…)`)}</p>`:'');
   const ci=B.map.company??0;
   const tk=!!B.tick;
-  $('#b-tbl').innerHTML='<tr>'+(tk?`<th title="${T('İndirilecek firmalar','Companies to download')}">${T('Seç','Pick')}</th>`:'')+`<th>${T('Puan','Grade')}</th><th>${T('Firma','Company')}</th><th>${T('Tayvan markaları','Taiwanese brands')}</th><th>${T('Neden','Reason')}</th>`+B.headers.map((h,i)=>i===ci?'':`<th>${esc(h)}</th>`).join('')+'</tr>'+
+  $('#b-tbl').innerHTML='<tr>'+(tk?`<th title="${T('İndirilecek firmalar','Companies to download')}">${T('Seç','Pick')}</th>`:'')+`<th>${T('Puan','Grade')}</th><th>${T('Firma','Company')}</th><th>${T('Tayvan markaları','Taiwanese brands')}</th><th>${T('Neden','Reason')}</th>`+B.headers.map((h,i)=>i===ci?'':`<th>${esc(HL(h))}</th>`).join('')+'</tr>'+
     sortedIdx().map(i=>{const r=B.results[i];const row=B.rows[i];return `<tr data-gp="${r?r.priority:''}">${tk?`<td><input type="checkbox" data-tick="${i}" ${B.tick[i]?'checked':''} aria-label="${T('Ekle','Add')}"></td>`:''}<td style="white-space:nowrap">${r?`<span class="pill p-${r.priority}">${LABEL[r.priority]||r.priority}</span>${r.score!=null&&r.priority!=='PARTNER'?` <b>${r.score}</b>`:''}`:'…'}</td><td><b>${esc(row[ci])}</b>${r&&r.repr&&r.repr.length?`<br><span class="hint">${T('+90 eşleşme','+90 match')}: ${esc(r.repr.join(', '))}</span>`:''}</td><td>${esc(tbText(r))}</td><td>${esc(RS(r))}</td>`+row.map((c,j)=>j===ci?'':`<td><div class="cl" title="${esc(c)}">${esc(c)}</div></td>`).join('')+'</tr>';}).join('');
   syncTicks();
 }
@@ -1133,6 +1136,7 @@ function applyLang(l){
   $('#f-legend').textContent=editIdx!=null?T('Düzenle','Edit')+': '+(($('#ff-company').value)||''):T('Firma ekle','Add a company'); renderLocal();
   renderTW(); renderHow();
   renderKW(); try{ if(B.rows&&B.rows.length) renderB(); }catch(e){}
+  document.querySelectorAll('#b-cols select option').forEach(o=>{ if(o.value!==''&&B.headers[+o.value]!=null) o.textContent=HL(B.headers[+o.value]); });
 }
 document.querySelectorAll('.langsw button').forEach(b=>b.addEventListener('click',()=>applyLang(b.dataset.lang)));
 applyLang();
