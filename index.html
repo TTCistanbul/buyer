@@ -257,6 +257,7 @@ button{border-radius:999px}
     <p class="hint" id="ff-warn"></p>
     <div class="btns"><button class="primary" id="ff-save"><span data-l="tr">Listeye ekle</span><span data-l="en">Add to the list</span></button><button id="ff-cancel" hidden><span data-l="tr">Vazgeç</span><span data-l="en">Cancel</span></button></div>
   </fieldset>
+    <div class="btns" style="align-items:center"><label for="l-filter" style="margin:0"><span data-l="tr">Fuara göre göster</span><span data-l="en">Show by trade show</span></label><select id="l-filter" style="width:auto;padding:5px 8px"></select><button id="l-backfill" type="button" hidden style="font-size:12px"></button></div>
     <div class="tbl" style="max-height:360px"><table id="l-tbl"></table></div>
     <div class="btns"><button class="primary" id="l-grade"><span data-l="tr">Bu listeyi puanla</span><span data-l="en">Grade this list</span></button><button id="l-clear"><span data-l="tr">Listeyi temizle</span><span data-l="en">Clear the list</span></button></div>
     <div class="status" id="f-status" aria-live="polite"></div>
@@ -837,6 +838,8 @@ let LOCAL=[], editIdx=null;
 try{ LOCAL=JSON.parse(localStorage.getItem('tab_local')||'[]'); if(!Array.isArray(LOCAL)) LOCAL=[]; }catch(e){ LOCAL=[]; }
 const saveLocal=()=>{ if(SHARED) return; try{ localStorage.setItem('tab_local',JSON.stringify(LOCAL)); }catch(e){} };
 /* ---- shared list in Firestore (signed-in office accounts only) ---- */
+let LISTS={};
+const listKey=n=>norm(n).slice(0,200);
 let SHARED=false, AUTHU=null, unsubBuyers=null, editKey=null;
 const ADMIN='evatzeng@taitra.org.tw', OFFICE=/@taitra\.org\.tw$/i;
 const KEEP=[...FF,'source','country'];
@@ -846,10 +849,18 @@ const SEP=' · ';
 const srcList=x=>String(x&&x.source||'').split(SEP).map(s=>s.trim()).filter(Boolean);
 function findCo(v){ const k=coKey(v.company); let i=k?LOCAL.findIndex(x=>coKey(x.company)===k):-1; if(i>=0) return i;
   const d=domainOf(v); if(d) i=LOCAL.findIndex(x=>domainOf(x)===d); return i; }
+const curShow=()=>$('#b-show').value.split(' — ')[0].trim().slice(0,80);
+const showsOf=x=>Array.isArray(x&&x.shows)?x.shows.filter(Boolean):[];
+// Old records without a show: guess it from the lists they came from (or a source that is a show name)
+function guessShows(x){ const out=new Set();
+  for(const s of srcList(x)){ const L=LISTS[listKey(s)]; if(L&&L.show) out.add(L.show);
+    const base=s.replace(/\s*\(kartvizit\)$/,'').trim(); if(SHOWS.some(y=>y[0]===base)) out.add(base); }
+  return [...out]; }
 const cloudErr=e=>{ $('#f-status').textContent=T('Ortak listeye kaydedilemedi: ','Could not save to the shared list: ')+((e&&e.code)||e); };
 function cloudPut(v,isNew,all){ if(!SHARED) return;
   const d=Object.fromEntries(KEEP.filter(k=>all||v[k]).map(k=>[k,String(v[k]??'')]));
   const now=new Date().toISOString(), who=me()!=='—'?me():AUTHU.email;
+  const sh=showsOf(v); if(sh.length) d.shows=firebase.firestore.FieldValue.arrayUnion(...sh);
   Object.assign(d,isNew?{by:who,byEmail:AUTHU.email,at:now}:{upBy:who,upEmail:AUTHU.email,upAt:now});
   db.collection('buyers').doc(v._id||bid(v.company)).set(d,{merge:true}).catch(cloudErr); }
 function setWhere(){ $('#l-where').innerHTML=SHARED?T('Herkes aynı listeyi görür. Aynı firma ikinci kez eklenirse yeni satır açılmaz, eksik bilgiler tamamlanır.','Everyone sees the same list. Adding a company again fills in missing details instead of a new row.')
@@ -885,27 +896,43 @@ $('#s-out').addEventListener('click',()=>firebase.auth().signOut());
 function fillForm(x){ for(const k of FF) $('#ff-'+k).value=(x[k]||''); }
 function resetForm(){ editIdx=null; editKey=null; fillForm({}); $('#f-legend').textContent=T('Firma ekle','Add a company'); $('#ff-cancel').hidden=true; $('#ff-warn').textContent=''; $('#ff-warn').dataset.ack=''; }
 function addLocal(v,fillOnly){ const i=findCo(v);
+  if(i>=0){ const have=showsOf(LOCAL[i]), nw=showsOf(v).filter(s=>!have.includes(s)); v={...v}; if(nw.length){ v.shows=nw; LOCAL[i].shows=[...have,...nw]; } else delete v.shows; }
   if(i>=0&&v.source){ const have=srcList(LOCAL[i]); if(!have.some(s=>norm(s)===norm(v.source))) v={...v,source:[...have,v.source].join(SEP)}; else v={...v,source:''}; }
   if(i>=0){ const add=Object.fromEntries(Object.entries(v).filter(([k,x])=>x&&k!=='company'&&(k==='source'||!(fillOnly&&LOCAL[i][k]))));
-    if(!Object.keys(add).length) return false;
-    LOCAL[i]={...LOCAL[i],...add}; cloudPut({...add,_id:LOCAL[i]._id},false,false); return false; }
+    if(!Object.keys(add).length&&!v.shows) return false;
+    if(add.shows) delete add.shows; LOCAL[i]={...LOCAL[i],...add}; if(v.shows) add.shows=v.shows; cloudPut({...add,_id:LOCAL[i]._id},false,false); return false; }
   if(SHARED) v={...v,_id:bid(v.company)}; LOCAL.push(v); cloudPut(v,true,false); return true; }
+const NOSHOW='__none__';
+const effShows=x=>{ const s=showsOf(x); return s.length?s:guessShows(x); };
+function viewIdx(){ const f=$('#l-filter').value; const all=LOCAL.map((x,i)=>i);
+  if(!f) return all; if(f===NOSHOW) return all.filter(i=>!effShows(LOCAL[i]).length);
+  return all.filter(i=>effShows(LOCAL[i]).includes(f)); }
+function renderFilter(){ const el=$('#l-filter'), cur=el.value, cnt={}; let none=0;
+  for(const x of LOCAL){ const s=effShows(x); if(!s.length) none++; for(const k of s) cnt[k]=(cnt[k]||0)+1; }
+  const order=k=>{ const j=SHOWS.findIndex(y=>y[0]===k); return j<0?999:j; };
+  const keys=Object.keys(cnt).sort((a,b)=>order(a)-order(b)||a.localeCompare(b));
+  el.innerHTML=`<option value="">${T('Tüm fuarlar','All shows')} (${LOCAL.length})</option>`+keys.map(k=>`<option value="${esc(k)}">${esc(k)} (${cnt[k]})</option>`).join('')+(none?`<option value="${NOSHOW}">${T('Fuarı belli değil','No show')} (${none})</option>`:'');
+  el.value=[...el.options].some(o=>o.value===cur)?cur:'';
+  const miss=LOCAL.filter(x=>!showsOf(x).length&&guessShows(x).length).length, bf=$('#l-backfill');
+  bf.hidden=!(SHARED&&AUTHU&&AUTHU.email===ADMIN&&miss); bf.textContent=T(`Eski ${miss} kayda tahmini fuarı kaydet`,`Save guessed show on ${miss} old records`); }
 function renderLocal(){
+  renderFilter(); const VI=viewIdx();
   $('#l-count').textContent=LOCAL.length?T(`(${LOCAL.length} firma)`,`(${LOCAL.length} companies)`):'';
   $('#l-grade').disabled=!LOCAL.length; $('#l-clear').disabled=!LOCAL.length;
-  $('#l-tbl').innerHTML=`<tr><th>${T('Firma','Company')}</th><th>${T('Yetkili','Contact')}</th><th>${T('Görevi','Job title')}</th><th>${T('E-posta','Email')}</th><th>${T('Telefon','Phone')}</th><th>${T('Şehir','City')}</th><th>${T('Kaynak','Source')}</th>${SHARED?`<th>${T('Ekleyen','Added by')}</th>`:''}<th></th></tr>`+
-    (LOCAL.length?LOCAL.map((x,i)=>`<tr><td><b>${esc(x.company)}</b></td><td>${esc(x.contact)}</td><td>${esc(x.title)}</td><td>${esc(x.email)}</td><td>${esc(x.phone||x.mobile)}</td><td>${esc(x.city)}</td><td><span class="hint">${srcList(x).length>1?`<b>${srcList(x).length} ${T('liste','lists')}</b>: `:''}${esc(x.source)}</span></td>${SHARED?`<td><span class="hint">${esc(x.by||'')}</span></td>`:''}<td style="white-space:nowrap"><button data-ledit="${i}" title="${T('Formda aç','Open in the form')}" style="padding:2px 8px">✎</button> <button data-ldel="${i}" title="${T('Sil','Delete')}" style="padding:2px 8px">×</button></td></tr>`).join('')
-      :`<tr><td colspan="9" class="hint">${T('Henüz firma yok. Formu doldur veya kartvizit fotoğrafı seç.','No companies yet. Fill in the form or pick business card photos.')}</td></tr>`);
+  $('#l-tbl').innerHTML=`<tr><th>${T('Firma','Company')}</th><th>${T('Yetkili','Contact')}</th><th>${T('Görevi','Job title')}</th><th>${T('E-posta','Email')}</th><th>${T('Telefon','Phone')}</th><th>${T('Şehir','City')}</th><th>${T('Fuar','Show')}</th><th>${T('Kaynak','Source')}</th>${SHARED?`<th>${T('Ekleyen','Added by')}</th>`:''}<th></th></tr>`+
+    (VI.length?VI.map(i=>[LOCAL[i],i]).map(([x,i])=>`<tr><td><b>${esc(x.company)}</b></td><td>${esc(x.contact)}</td><td>${esc(x.title)}</td><td>${esc(x.email)}</td><td>${esc(x.phone||x.mobile)}</td><td>${esc(x.city)}</td><td>${showsOf(x).length?esc(showsOf(x).join(', ')):(guessShows(x).length?`<span class="hint" title="${T('Kaynak listesinden tahmin','Guessed from the source list')}">${esc(guessShows(x).join(', '))} ?</span>`:'<span class="hint">—</span>')}</td><td><span class="hint">${srcList(x).length>1?`<b>${srcList(x).length} ${T('liste','lists')}</b>: `:''}${esc(x.source)}</span></td>${SHARED?`<td><span class="hint">${esc(x.by||'')}</span></td>`:''}<td style="white-space:nowrap"><button data-ledit="${i}" title="${T('Formda aç','Open in the form')}" style="padding:2px 8px">✎</button> <button data-ldel="${i}" title="${T('Sil','Delete')}" style="padding:2px 8px">×</button></td></tr>`).join('')
+      :`<tr><td colspan="10" class="hint">${LOCAL.length?T('Bu fuar için firma yok.','No companies for this show.'):T('Henüz firma yok. Formu doldur veya kartvizit fotoğrafı seç.','No companies yet. Fill in the form or pick business card photos.')}</td></tr>`);
 }
 $('#ff-cancel').addEventListener('click',e=>{ e.preventDefault(); resetForm(); });
 $('#ff-save').addEventListener('click',e=>{
   e.preventDefault();
   const v=Object.fromEntries(FF.map(k=>[k,$('#ff-'+k).value.trim().slice(0,300)]));
   if(!v.company){ $('#ff-company').focus(); $('#ff-warn').textContent=T('Firma adı gerekli','Company name is required'); return; }
+  if(editIdx==null&&!curShow()){ $('#ff-warn').textContent=T('Önce yukarıdan hedef Tayvan fuarını seç.','Choose the target Taiwan show at the top first.'); $('#b-show').focus(); return; }
   if(v.email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email)){ $('#ff-email').focus(); $('#ff-warn').textContent=T('E-posta adresi geçersiz görünüyor','The email looks invalid'); return; }
   const missing=[['contact',T('Yetkili','Contact')],['title',T('Görevi','Job title')],['email',T('E-posta','Email')],['city',T('Şehir','City')]].filter(([k])=>!v[k]).map(([,l])=>l);
   if(missing.length&&$('#ff-warn').dataset.ack!==missing.join()){ $('#ff-warn').dataset.ack=missing.join(); $('#ff-warn').innerHTML=`<span class="miss">${T('Eksik','Missing')}</span> ${missing.join(', ')}. `+T('Bulabilirsen doldur, bulamazsan düğmeye bir kez daha bas.','Fill them in if you can, or press the button again to add anyway.'); return; }
-  v.source=$('#f-src').value.trim().slice(0,200); v.country='Türkiye';
+  v.source=$('#f-src').value.trim().slice(0,200); v.country='Türkiye'; if(curShow()) v.shows=[curShow()];
   if(editIdx!=null&&editIdx>=0){ LOCAL[editIdx]={...LOCAL[editIdx],...v}; cloudPut(LOCAL[editIdx],false,true); $('#f-status').textContent=T('Güncellendi: ','Updated: ')+v.company; }
   else $('#f-status').textContent=(addLocal(v)?T('Eklendi: ','Added: '):T('Zaten listedeydi, bilgiler güncellendi: ','Already listed, details updated: '))+v.company;
   saveLocal(); resetForm(); renderLocal(); $('#ff-company').focus();
@@ -917,15 +944,21 @@ $('#l-tbl').addEventListener('click',e=>{
       db.collection('buyers').doc(x._id).delete().catch(cloudErr); return; }
     LOCAL.splice(i,1); saveLocal(); resetForm(); renderLocal(); }
 });
+$('#l-filter').addEventListener('change',renderLocal);
+$('#l-backfill').addEventListener('click',async()=>{ if(!SHARED||AUTHU.email!==ADMIN) return;
+  const todo=LOCAL.filter(x=>!showsOf(x).length&&guessShows(x).length);
+  if(!todo.length||!confirm(T(`${todo.length} eski kayda tahmini fuar kaydedilsin mi?`,`Save the guessed show on ${todo.length} old records?`))) return;
+  let n=0; for(const x of todo){ try{ await db.collection('buyers').doc(x._id).set({shows:guessShows(x)},{merge:true}); n++; }catch(e){ cloudErr(e); break; } }
+  $('#f-status').textContent=T(`${n} kayda fuar eklendi.`,`Show added to ${n} records.`); });
 $('#l-clear').addEventListener('click',()=>{ if(!LOCAL.length||!confirm(T(`${LOCAL.length} firmalık liste silinsin mi? İndirmediysen önce indir.`,`Delete the list of ${LOCAL.length} companies? Download it first if you have not.`))) return; LOCAL=[]; saveLocal(); resetForm(); renderLocal(); });
 $('#l-grade').addEventListener('click',()=>{
-  if(!LOCAL.length) return;
+  const VI=viewIdx(); if(!VI.length) return;
   if(!need('#b-show','#f-status')) return;
   B.headers=['Firma','Yetkili','Görevi','E-posta','Telefon','Cep telefonu','Web','Adres','Şehir','Ülke','Ürün / Faaliyet','Kaynak'];
-  B.rows=LOCAL.map(x=>[x.company,x.contact,x.title,x.email,x.phone,x.mobile,x.web,x.address,x.city,x.country||'Türkiye',x.info,x.source].map(v=>String(v??'')));
+  B.rows=VI.map(i=>LOCAL[i]).map(x=>[x.company,x.contact,x.title,x.email,x.phone,x.mobile,x.web,x.address,x.city,x.country||'Türkiye',x.info,x.source].map(v=>String(v??'')));
   B.results=[]; B.tick=null; B.local=true; WB=null; $('#b-sheet').hidden=true; $('#b-sheet-l').hidden=true; $('#b-file-name').textContent='';
   if(!$('#b-src').value.trim()) $('#b-src').value=T('Kendi bulduklarımız (kartvizit, arama)','Found by us (cards, search)');
-  showMap(); $('#b-status').textContent=T(`${LOCAL.length} firma puanlanıyor…`,`Grading ${LOCAL.length} companies…`); autoGrade();
+  showMap(); $('#b-status').textContent=T(`${VI.length} firma puanlanıyor…`,`Grading ${VI.length} companies…`); autoGrade();
   $('#b-map').scrollIntoView({behavior:'smooth',block:'start'});
 });
 renderLocal(); setWhere();
@@ -1004,10 +1037,11 @@ $('#ff-photo').addEventListener('change',async e=>{
       $('#f-status').textContent=T('Kartvizit okundu. Alanları kontrol et, sonra “Listeye ekle”.','Card read. Check the fields, then “Add to the list”.');
       $('#f-form').scrollIntoView({behavior:'smooth',block:'start'});
     } else {
+      if(!curShow()){ $('#f-status').textContent=T('Önce yukarıdan hedef Tayvan fuarını seç.','Choose the target Taiwan show at the top first.'); $('#b-show').focus(); return; }
       const src=(($('#f-src').value.trim()||'')+' (kartvizit)').trim().slice(0,200);
       let ok=0, fail=0, dup=0, n=0;
       for(const f of files){
-        try{ const v=await readCardLocal(f); if(!v.company){ fail++; } else { v.source=src; v.country='Türkiye'; if(addLocal(v)) ok++; else dup++; saveLocal(); renderLocal(); } }catch(err){ fail++; }
+        try{ const v=await readCardLocal(f); if(!v.company){ fail++; } else { v.source=src; v.country='Türkiye'; if(curShow()) v.shows=[curShow()]; if(addLocal(v)) ok++; else dup++; saveLocal(); renderLocal(); } }catch(err){ fail++; }
         n++; $('#f-status').textContent=T(`Kartvizitler okunuyor… ${n}/${files.length}`,`Reading cards… ${n}/${files.length}`);
       }
       $('#f-status').textContent=T(`${ok} kartvizit eklendi${dup?`, ${dup} zaten vardı`:''}${fail?`, ${fail} okunamadı`:''}. ✎ ile kontrol et.`,`${ok} cards added${dup?`, ${dup} already listed`:''}${fail?`, ${fail} unreadable`:''}. Check them with ✎.`);
@@ -1049,7 +1083,7 @@ $('#b-share').addEventListener('click',()=>{
   if(!confirm(T(`${idx.length} firma ortak listeye eklensin mi?`,`Add ${idx.length} companies to the shared list?`))) return;
   let added=0, upd=0;
   for(const i of idx){ const r=B.rows[i];
-    const v={company:g(r,'company'),contact:g(r,'contact'),title:g(r,'title'),email:g(r,'email'),phone:g(r,'phone'),mobile:g(r,'mobile'),web:g(r,'web'),address:g(r,'address'),city:g(r,'city'),info:g(r,'info'),source:g(r,'source')||src,country:g(r,'country')||'Türkiye'};
+    const v={company:g(r,'company'),contact:g(r,'contact'),title:g(r,'title'),email:g(r,'email'),phone:g(r,'phone'),mobile:g(r,'mobile'),web:g(r,'web'),address:g(r,'address'),city:g(r,'city'),info:g(r,'info'),source:g(r,'source')||src,country:g(r,'country')||'Türkiye',shows:curShow()?[curShow()]:[]};
     if(!v.company) continue; if(addLocal(v,true)) added++; else upd++; }
   renderLocal();
   if(B.lists){ const per={}; idx.forEach(i=>{ const s=g(B.rows[i],'source'); per[s]=(per[s]||0)+1; }); Object.entries(per).forEach(([s,n])=>{ if(B.lists.some(L=>L.name===s)) logList({added:firebase.firestore.FieldValue.increment(n)},s); }); }
@@ -1090,12 +1124,10 @@ document.addEventListener('click',async e=>{ const b=e.target.closest('button[da
   if(confirm(T(`“${x.name}” silinsin mi?`,`Delete “${x.name}”?`))) db.collection('extrasrc').doc(x._id).delete().catch(err=>alert(err.code||err)); });
 
 /* ===== Lists already worked through (shared) ===== */
-let LISTS={};
-const listKey=n=>norm(n).slice(0,200);
 function logList(extra,nm){ if(!db||!SHARED||B.local) return; const name=(nm||$('#b-src').value).trim(); if(!name) return;
   const now=new Date().toISOString(), who=me()!=='—'?me():AUTHU.email;
   db.collection('lists').doc(listKey(name)).set({name:name.slice(0,200),show:$('#b-show').value.split(' — ')[0].slice(0,80),by:who,byEmail:AUTHU.email,at:now,...extra},{merge:true}).catch(()=>{}); }
-function watchLists(){ if(!db) return; try{ db.collection('lists').onSnapshot(qs=>{ LISTS={}; qs.docs.forEach(d=>LISTS[d.id]=d.data()); renderDone(); srcWarn(); },()=>{}); }catch(e){} }
+function watchLists(){ if(!db) return; try{ db.collection('lists').onSnapshot(qs=>{ LISTS={}; qs.docs.forEach(d=>LISTS[d.id]=d.data()); renderDone(); srcWarn(); renderLocal(); },()=>{}); }catch(e){} }
 const listLine=x=>T(`${x.by||x.byEmail||'—'} · ${fmt(x.at)}${x.rows!=null?` · ${x.rows} firma`:''}${x.added?` · ${x.added} ortak listeye`:''}`,`${x.by||x.byEmail||'—'} · ${fmt(x.at)}${x.rows!=null?` · ${x.rows} companies`:''}${x.added?` · ${x.added} to shared list`:''}`);
 function renderDone(){ document.querySelectorAll('select.how').forEach(el=>{ let b=el.nextElementSibling; if(!b||!b.classList.contains('done')){ b=document.createElement('span'); b.className='done'; el.after(b); }
     const x=LISTS[listKey(el.dataset.k)]; b.hidden=!x; b.textContent=x?' ✅ '+(x.by||'')+' '+fmt(x.at).split(' ')[0]:''; b.title=x?T('Tarandı: ','Done: ')+listLine(x):''; }); }
