@@ -158,6 +158,9 @@
 <script>
 const FIREBASE_CONFIG={apiKey:"AIzaSyDCm-mdbt8zoA5sTk84OsTA8EHR337mmyI",authDomain:"buyer-c7221.firebaseapp.com",projectId:"buyer-c7221",storageBucket:"buyer-c7221.firebasestorage.app",messagingSenderId:"69344593670",appId:"1:69344593670:web:8bcc15ab876ee062e48087"};
 const ADMIN="evatzeng@taitra.org.tw", OFFICE=/@taitra\.org\.tw$/i;
+// reCAPTCHA v3 site key for Firebase App Check (needed by Gemini / AI Logic). Empty = App Check off.
+const RECAPTCHA_SITE_KEY="";
+const GEMINI_MODELS=["gemini-3.6-flash","gemini-3.5-flash-lite","gemini-2.5-flash"];
 
 const T = {
   tr:{title:"Kartvizit → HubSpot",subtitle:"Tayvan Ticaret Merkezi · İstanbul",back:"← Alıcı listesi",logout:"Çıkış",
@@ -168,7 +171,7 @@ const T = {
     privacy:"Fotoğraf ve bilgiler ofisin ortak alıcı veritabanına (Firebase) kaydedilir; sadece @taitra.org.tw hesapları görebilir.",
     checked:"Kontrol ettim",approve:"Eva onayı",rotate:"↻ Döndür",addBack:"+ Arka yüz",delete:"Sil",rawText:"Okunan ham metin",
     rawHint:"Eksik bilgiyi buradan kopyalayıp yukarıdaki alanlara yapıştırabilirsiniz.",
-    loadingModel:"OCR modeli yükleniyor (ilk seferde biraz sürebilir)…",reading:"Metin okunuyor…",done:"",failed:"Okunamadı – bilgileri elle girin",waiting:"Sırada…",saving:"Kaydediliyor…",
+    aiReading:"Gemini kartı okuyor…",aiFallback:"Gemini kullanılamadı, basit OCR kullanıldı",loadingModel:"OCR modeli yükleniyor (ilk seferde biraz sürebilir)…",reading:"Metin okunuyor…",done:"",failed:"Okunamadı – bilgileri elle girin",waiting:"Sırada…",saving:"Kaydediliyor…",
     stNew:"Kontrol bekliyor",stChecked:"Eva onayı bekliyor",stApproved:"Onaylandı – aktarılabilir",stExported:"HubSpot'a aktarıldı",stDup:"Tekrar eden e-posta",
     fTodo:"Bekleyenler",fApproved:"Onaylananlar",fExported:"Aktarılanlar",fAll:"Hepsi",
     count:(n,a)=>`Bu görünümde ${n} kart · ${a} onaylı`,
@@ -185,7 +188,7 @@ const T = {
     privacy:"照片和資料會存進中心的買主資料庫（Firebase），只有 @taitra.org.tw 帳號看得到。",
     checked:"已檢查",approve:"Eva 確認",rotate:"↻ 旋轉",addBack:"+ 背面",delete:"刪除",rawText:"辨識出的原始文字",
     rawHint:"缺的資料可以從這裡複製，貼到上面的欄位。",
-    loadingModel:"載入辨識模型中（第一次會比較久）…",reading:"辨識文字中…",done:"",failed:"無法辨識，請手動輸入",waiting:"排隊中…",saving:"儲存中…",
+    aiReading:"Gemini 讀取名片中…",aiFallback:"Gemini 無法使用，改用基本辨識",loadingModel:"載入辨識模型中（第一次會比較久）…",reading:"辨識文字中…",done:"",failed:"無法辨識，請手動輸入",waiting:"排隊中…",saving:"儲存中…",
     stNew:"待同事檢查",stChecked:"待 Eva 確認",stApproved:"已確認，可匯出",stExported:"已匯入 HubSpot",stDup:"email 重複",
     fTodo:"待處理",fApproved:"已確認",fExported:"已匯入",fAll:"全部",
     count:(n,a)=>`此檢視 ${n} 張 · 已確認 ${a} 張`,
@@ -351,14 +354,33 @@ let workerP=null, current=null;
 function getWorker(){ if(!workerP) workerP=Tesseract.createWorker(["tur","eng"],1,{logger:m=>{ if(current){ current.prog=m.progress||0; current.status=m.status==="recognizing text"?"reading":"loading"; progress(current);} }}); return workerP; }
 const queue=[]; let busy=false;
 function enqueue(job){ queue.push(job); runQueue(); }
+function cleanAI(r){
+  const o={}; const str=v=>(v==null?"":String(v)).replace(/\s+/g," ").trim();
+  ["firstName","lastName","jobTitle","company","address","city","country"].forEach(k=>o[k]=str(r[k]));
+  o.email=str(r.email).toLowerCase().replace(/\s/g,"");
+  o.website=str(r.website).replace(/^https?:\/\//i,"").replace(/\/$/,"").toLowerCase();
+  const ph=v=>{ v=str(v); if(!v) return ""; const p=normPhone(v); return p.tr?p.num:v; };
+  o.mobile=ph(r.mobile); o.phone=ph(r.phone);
+  if(!o.website){ const d=domainOf(o); if(d) o.website="www."+d; }
+  return o;
+}
 async function runQueue(){
   if(busy) return; busy=true;
   while(queue.length){
-    const job=queue.shift(), c=job.card; current=c; c.status="loading"; c.prog=0; paint(c);
-    let text="";
-    try{ const w=await getWorker(); c.status="reading"; paint(c); const {data}=await w.recognize(ocrCanvas(job.img,job.rot||0)); text=(data.text||"").trim(); }
-    catch(e){ console.error(e); }
-    const parsed=text?parseCard(text):{};
+    const job=queue.shift(), c=job.card; current=null; c.prog=0; c.note="";
+    let parsed=null, text="";
+    if(window.geminiRead){
+      try{ c.status="ai"; paint(c);
+        const imgs=job.side==="back"?[c.frontSrc,c.backSrc].filter(Boolean):[c.frontSrc];
+        const r=await window.geminiRead(imgs); parsed=cleanAI(r); text=String(r.raw||"").trim(); }
+      catch(e){ console.warn("Gemini:",e); c.note=t("aiFallback")+" ("+String((e&&(e.code||e.message))||e).slice(0,90)+")"; parsed=null; }
+    } else if(window.geminiError){ c.note=t("aiFallback")+" ("+window.geminiError+")"; }
+    if(!parsed){
+      current=c; c.status="loading"; paint(c);
+      try{ const w=await getWorker(); c.status="reading"; paint(c); const {data}=await w.recognize(ocrCanvas(job.img,job.rot||0)); text=(data.text||"").trim(); }
+      catch(e){ console.error(e); }
+      parsed=text?parseCard(text):{};
+    }
     const patch={ocr:"done"};
     if(job.side==="back"){
       patch.raw=(c.data.raw||"")+"\n--- (arka / 背面) ---\n"+text;
@@ -366,10 +388,10 @@ async function runQueue(){
     } else {
       patch.raw=text;
       const touched=c.touched||{};
-      FIELDS.forEach(f=>{ if(f==="source"||f==="country")return; if(!touched[f]) patch[f]=parsed[f]||""; });
-      if(!c.data.country) patch.country=$("#s-country").value.trim();
+      FIELDS.forEach(f=>{ if(f==="source")return; if(f==="country"){ if(parsed.country&&!touched.country) patch.country=parsed.country; return; } if(!touched[f]) patch[f]=parsed[f]||""; });
+      if(!patch.country&&!c.data.country) patch.country=$("#s-country").value.trim();
     }
-    c.status=text?"done":"failed"; c.prog=1; current=null;
+    c.status=(text||Object.values(parsed).some(Boolean))?"done":"failed"; c.prog=1; current=null;
     saveFields(c,patch,true); paint(c);
   }
   busy=false;
@@ -459,12 +481,12 @@ function paint(c){
   n.querySelector(".appr").checked=!!d.evaOk;
   n.querySelector(".chk.admin").hidden=!isAdmin();
   n.querySelector(".rot").disabled=locked||busyOn(c); n.querySelector(".back").disabled=locked||busyOn(c); n.querySelector(".del").disabled=locked;
-  const st={queued:t("waiting"),loading:t("loadingModel"),reading:t("reading"),failed:t("failed"),remote:t("reading")}[c.status]||"";
-  n.querySelector(".status").textContent=st;
+  const st={queued:t("waiting"),ai:t("aiReading"),loading:t("loadingModel"),reading:t("reading"),failed:t("failed"),remote:t("reading")}[c.status]||"";
+  n.querySelector(".status").textContent=[st,c.note].filter(Boolean).join(" · ");
   progress(c); head(c);
 }
-const busyOn=c=>["queued","loading","reading"].includes(c.status);
-function progress(c){ if(!c.el) return; const b=c.el.querySelector(".bar"); b.style.display=busyOn(c)?"":"none"; b.firstElementChild.style.width=Math.round((c.prog||0)*100)+"%";
+const busyOn=c=>["queued","ai","loading","reading"].includes(c.status);
+function progress(c){ if(!c.el) return; const b=c.el.querySelector(".bar"); b.style.display=busyOn(c)?"":"none"; b.firstElementChild.style.width=(c.status==="ai"?60:Math.round((c.prog||0)*100))+"%";
   const st={loading:t("loadingModel"),reading:t("reading")}[c.status]; if(st) c.el.querySelector(".status").textContent=st+(c.prog?` ${Math.round(c.prog*100)}%`:""); }
 function head(c){ if(!c.el) return; const d=c.data; const nm=[d.firstName,d.lastName].filter(Boolean).join(" ")||"—";
   c.el.querySelector(".cname").textContent=nm+(d.company?" · "+d.company:"");
@@ -538,6 +560,43 @@ auth.onAuthStateChanged(u=>{
   if(u){ startList(); } else { if(unsub) unsub(); unsub=null; CARDS.clear(); $("#cards").innerHTML=""; }
 });
 applyLang();
+</script>
+<script type="module">
+// Gemini (Firebase AI Logic) reads the card photo(s) and returns the fields as JSON.
+const V="13.4.0", B=`https://www.gstatic.com/firebasejs/${V}/`;
+try{
+  const {initializeApp}=await import(B+"firebase-app.js");
+  const {getAI,getGenerativeModel,GoogleAIBackend}=await import(B+"firebase-ai.js");
+  const app=initializeApp(FIREBASE_CONFIG,"ai");
+  if(RECAPTCHA_SITE_KEY){ const {initializeAppCheck,ReCaptchaV3Provider}=await import(B+"firebase-app-check.js");
+    initializeAppCheck(app,{provider:new ReCaptchaV3Provider(RECAPTCHA_SITE_KEY),isTokenAutoRefreshEnabled:true}); }
+  const ai=getAI(app,{backend:new GoogleAIBackend()});
+  const F=["firstName","lastName","jobTitle","company","email","mobile","phone","website","address","city","country","raw"];
+  const schema={type:"object",properties:Object.fromEntries(F.map(k=>[k,{type:"string"}])),required:F};
+  const PROMPT=`You read business cards, mostly from Turkish companies (Turkish and/or English text; there may be a front and a back photo of the same card).
+Return one JSON object for the person on the card:
+- firstName: all given names (Turkish cards often have two), lastName: family name. Write names in normal case (e.g. "Mehmet Ali", "Yılmaz"), not ALL CAPS. Keep Turkish letters (ç ğ ı İ ö ş ü).
+- jobTitle: as written on the card (prefer the English one if both exist).
+- company: the full legal company name as printed (e.g. "... San. ve Tic. A.Ş."); if only a brand/logo text is visible, use that.
+- email, website (no http://).
+- mobile: mobile/GSM/Cep number; phone: landline/Tel number. Never use the fax number. Write Turkish numbers as +90 XXX XXX XX XX.
+- address: street address without city and country; city: the province (İl), e.g. İstanbul, Bursa; country: country name in English (Turkey if Turkish address).
+- raw: every piece of text on the card(s), line by line.
+Use "" for anything not on the card. Do not guess or invent anything.`;
+  window.geminiRead=async(dataUrls)=>{
+    const parts=[{text:PROMPT}, ...dataUrls.map(u=>({inlineData:{mimeType:"image/jpeg",data:u.split(",")[1]}}))];
+    let last;
+    for(const m of GEMINI_MODELS){
+      try{
+        const model=getGenerativeModel(ai,{model:m,generationConfig:{responseMimeType:"application/json",responseJsonSchema:schema,temperature:0}});
+        const res=await model.generateContent(parts);
+        return JSON.parse(res.response.text());
+      }catch(e){ last=e; const msg=String(e&&e.message||e);
+        if(!/not found|404|not supported|unsupported|429|quota|RESOURCE_EXHAUSTED|503|overloaded/i.test(msg)) throw e; }
+    }
+    throw last;
+  };
+}catch(e){ window.geminiError=String(e&&e.message||e).slice(0,90); console.warn("Gemini setup:",e); }
 </script>
 </body>
 </html>
