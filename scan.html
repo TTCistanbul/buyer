@@ -171,7 +171,7 @@ const T = {
     privacy:"Fotoğraf ve bilgiler ofisin ortak alıcı veritabanına (Firebase) kaydedilir; sadece @taitra.org.tw hesapları görebilir.",
     checked:"Kontrol ettim",approve:"Eva onayı",rotate:"↻ Döndür",addBack:"+ Arka yüz",delete:"Sil",rawText:"Okunan ham metin",
     rawHint:"Eksik bilgiyi buradan kopyalayıp yukarıdaki alanlara yapıştırabilirsiniz.",
-    aiReading:"Gemini kartı okuyor…",aiFallback:"Gemini kullanılamadı, basit OCR kullanıldı",loadingModel:"OCR modeli yükleniyor (ilk seferde biraz sürebilir)…",reading:"Metin okunuyor…",done:"",failed:"Okunamadı – bilgileri elle girin",waiting:"Sırada…",saving:"Kaydediliyor…",
+    aiReading:"Gemini kartı okuyor…",noCard:"Fotoğrafta kart bulunamadı",dupSkipped:n=>`Bu kart zaten listede, tekrar eklenmedi (${n}).`,multiFound:(n,k)=>`Fotoğrafta ${n} kart bulundu, ${k} yeni kart eklendi.`,aiFallback:"Gemini kullanılamadı, basit OCR kullanıldı",loadingModel:"OCR modeli yükleniyor (ilk seferde biraz sürebilir)…",reading:"Metin okunuyor…",done:"",failed:"Okunamadı – bilgileri elle girin",waiting:"Sırada…",saving:"Kaydediliyor…",
     stNew:"Kontrol bekliyor",stChecked:"Eva onayı bekliyor",stApproved:"Onaylandı – aktarılabilir",stExported:"HubSpot'a aktarıldı",stDup:"Tekrar eden e-posta",
     fTodo:"Bekleyenler",fApproved:"Onaylananlar",fExported:"Aktarılanlar",fAll:"Hepsi",
     count:(n,a)=>`Bu görünümde ${n} kart · ${a} onaylı`,
@@ -188,7 +188,7 @@ const T = {
     privacy:"照片和資料會存進中心的買主資料庫（Firebase），只有 @taitra.org.tw 帳號看得到。",
     checked:"已檢查",approve:"Eva 確認",rotate:"↻ 旋轉",addBack:"+ 背面",delete:"刪除",rawText:"辨識出的原始文字",
     rawHint:"缺的資料可以從這裡複製，貼到上面的欄位。",
-    aiReading:"Gemini 讀取名片中…",aiFallback:"Gemini 無法使用，改用基本辨識",loadingModel:"載入辨識模型中（第一次會比較久）…",reading:"辨識文字中…",done:"",failed:"無法辨識，請手動輸入",waiting:"排隊中…",saving:"儲存中…",
+    aiReading:"Gemini 讀取名片中…",noCard:"照片裡找不到名片",dupSkipped:n=>`這張名片已經在名單裡，沒有重複新增（${n}）。`,multiFound:(n,k)=>`照片裡有 ${n} 張名片，新增了 ${k} 張。`,aiFallback:"Gemini 無法使用，改用基本辨識",loadingModel:"載入辨識模型中（第一次會比較久）…",reading:"辨識文字中…",done:"",failed:"無法辨識，請手動輸入",waiting:"排隊中…",saving:"儲存中…",
     stNew:"待同事檢查",stChecked:"待 Eva 確認",stApproved:"已確認，可匯出",stExported:"已匯入 HubSpot",stDup:"email 重複",
     fTodo:"待處理",fApproved:"已確認",fExported:"已匯入",fAll:"全部",
     count:(n,a)=>`此檢視 ${n} 張 · 已確認 ${a} 張`,
@@ -216,8 +216,10 @@ const FREEMAIL=["gmail","hotmail","yahoo","outlook","yandex","icloud","live","ms
 const hasKw=(s,list)=>{const f=" "+fold(s)+" ";return list.some(k=>f.includes(fold(k)))};
 
 function normPhone(raw){
+  raw=String(raw).replace(/\([^)]*\)/g," ").replace(/\s*(pbx|hat|ext|dahili)\b.*$/i,"");
   let d=raw.replace(/[^\d+]/g,""); const plus=d.startsWith("+"); d=d.replace(/\+/g,"");
   if(d.startsWith("0090")) d=d.slice(2);
+  if(d.length===13&&d.startsWith("900")) d="90"+d.slice(3);
   if(d.length===12&&d.startsWith("90")) d=d.slice(2);
   else if(d.length===11&&d.startsWith("0")) d=d.slice(1);
   else if(!(d.length===10&&/^[2-5]/.test(d))) return {num:(plus?"+":"")+d,mobile:false,tr:false};
@@ -354,25 +356,91 @@ let workerP=null, current=null;
 function getWorker(){ if(!workerP) workerP=Tesseract.createWorker(["tur","eng"],1,{logger:m=>{ if(current){ current.prog=m.progress||0; current.status=m.status==="recognizing text"?"reading":"loading"; progress(current);} }}); return workerP; }
 const queue=[]; let busy=false;
 function enqueue(job){ queue.push(job); runQueue(); }
-function cleanAI(r){
-  const o={}; const str=v=>(v==null?"":String(v)).replace(/\s+/g," ").trim();
-  ["firstName","lastName","jobTitle","company","address","city","country"].forEach(k=>o[k]=str(r[k]));
-  o.email=str(r.email).toLowerCase().replace(/\s/g,"");
-  o.website=str(r.website).replace(/^https?:\/\//i,"").replace(/\/$/,"").toLowerCase();
-  const ph=v=>{ v=str(v); if(!v) return ""; const p=normPhone(v); return p.tr?p.num:v; };
-  o.mobile=ph(r.mobile); o.phone=ph(r.phone);
-  if(!o.website){ const d=domainOf(o); if(d) o.website="www."+d; }
+const IST_DISTRICTS=["adalar","arnavutkoy","atasehir","avcilar","bagcilar","bahcelievler","bakirkoy","basaksehir","bayrampasa","besiktas","beykoz","beylikduzu","beyoglu","buyukcekmece","catalca","cekmekoy","esenler","esenyurt","eyupsultan","eyup","fatih","gaziosmanpasa","gungoren","kadikoy","kagithane","kartal","kucukcekmece","maltepe","pendik","sancaktepe","sariyer","silivri","sultanbeyli","sultangazi","sile","sisli","tuzla","umraniye","uskudar","zeytinburnu","maslak","merter","levent","ikitelli","dudullu","gayrettepe","mecidiyekoy","halkali","ayazaga"];
+const FIXCASE=w=>(w.length>1&&w===w.toLocaleUpperCase("tr")&&/[A-ZÇĞİÖŞÜ]/.test(w))?titleCase(w):w;
+const cardKey=f=>{ const e=(f.email||"").toLowerCase().trim(); if(e) return "e:"+e;
+  const n=fold((f.firstName||"")+" "+(f.lastName||"")).trim(); return n?"n:"+n+"|"+fold(f.company||"").slice(0,12):""; };
+// Clean one card returned by Gemini, using rules learned from real Turkish cards.
+function fixAI(r){
+  const str=v=>(v==null?"":String(v)).replace(/\s+/g," ").trim();
+  const o={}; ["firstName","lastName","jobTitle","company","address","city","country"].forEach(k=>o[k]=str(r[k]));
+  // names: "Nihat İMİR" -> "Nihat İmir", "Tunç KILINÇEL" -> "Tunç Kılınçel" (Turkish I/ı, İ/i)
+  o.firstName=o.firstName.split(" ").map(FIXCASE).join(" "); o.lastName=o.lastName.split(" ").map(FIXCASE).join(" ");
+  if(!o.lastName&&o.firstName.includes(" ")){ const w=o.firstName.split(" "); o.lastName=w.pop(); o.firstName=w.join(" "); }
+  // email / website
+  const em=str(r.email).toLowerCase().replace(/\s/g,"").match(/[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}/);
+  o.email=em?em[0]:"";
+  const dom=o.email&&!FREEMAIL.some(f=>o.email.split("@")[1].startsWith(f+"."))?o.email.split("@")[1]:"";
+  let sites=str(r.website).toLowerCase().split(/[\s,;•|]+/).map(x=>x.replace(/^https?:\/\//,"").replace(/\/$/,"")).filter(x=>/\.[a-z]{2,}/.test(x));
+  o.website=(dom&&sites.find(x=>x.includes(dom)))||sites[0]||(dom?"www."+dom:"");
+  // phones: classify by the number itself (TR 5xx = mobile), never keep the fax
+  const fax=new Set(str(r.fax).split(/[,;\/]| {2,}/).map(x=>normPhone(x).num).filter(Boolean));
+  const mob=[],land=[];
+  [r.mobile,r.phone,r.otherPhones].forEach((v,i)=>str(v).split(/[,;]| \/ /).forEach(x=>{ x=x.trim(); if(!x) return;
+    const p=normPhone(x); if(!p.num||p.num.replace(/\D/g,"").length<10||fax.has(p.num)) return;
+    if(p.tr) (p.mobile?mob:land).push(p.num); else if(x.startsWith("+")) (i===0?mob:land).push(p.num); }));  // tax no. etc. dropped
+  o.mobile=[...new Set(mob)][0]||""; o.phone=[...new Set(land)][0]||"";
+  // city: districts / "İST." -> İstanbul; province names canonical
+  const fc=fold(o.city), fa=fold(o.address);
+  if(IST_DISTRICTS.includes(fc)||/^ist\.?$/.test(fc)||/istanbul/.test(fc)||(!o.city&&(/\bist\.?$/.test(fa)||/istanbul/.test(fa)))) o.city="İstanbul";
+  const cc=CITIES.find(c=>fold(c)===fold(o.city)); if(cc) o.city=cc==="Gebze"?"Kocaeli":cc;
+  // country: Türkiye / TURKIYE / Turkey -> the page default
+  if(/^(turkiye|turkey|tr)$/.test(fold(o.country))||(!o.country&&o.city)) o.country=$("#s-country").value.trim()||"Turkey";
+  o.raw=str(r.raw)?String(r.raw).trim():""; if(str(r.other)) o.raw=(o.raw?o.raw+"\n":"")+"[Not] "+str(r.other);
   return o;
+}
+function isDupCard(f,selfId){ const k=cardKey(f); if(!k) return false;
+  for(const c of CARDS.values()){ if(c.id!==selfId&&cardKey(c.data)===k) return true; } return false; }
+async function cropCard(src,box,rot){
+  if(!Array.isArray(box)||box.length!==4) return null;
+  let [y0,x0,y1,x1]=box.map(Number); if([y0,x0,y1,x1].some(v=>!isFinite(v))) return null;
+  if(y1<y0)[y0,y1]=[y1,y0]; if(x1<x0)[x0,x1]=[x1,x0];
+  if((y1-y0)*(x1-x0)<1000*1000*0.03) return null;           // box too small -> keep full photo
+  if((y1-y0)*(x1-x0)>1000*1000*0.92&&!rot) return null;     // card already fills the photo
+  const im=await srcToImage(src), W=im.naturalWidth, H=im.naturalHeight, pad=15;
+  const sx=Math.max(0,(x0-pad)/1000*W), sy=Math.max(0,(y0-pad)/1000*H), sw=Math.min(W,(x1+pad)/1000*W)-sx, sh=Math.min(H,(y1+pad)/1000*H)-sy;
+  const tmp=document.createElement("canvas"); tmp.width=Math.round(sw); tmp.height=Math.round(sh);
+  tmp.getContext("2d").drawImage(im,sx,sy,sw,sh,0,0,tmp.width,tmp.height);
+  const r=((Math.round((Number(rot)||0)/90)*90)%360+360)%360;
+  return toJpeg(Object.assign(tmp,{naturalWidth:tmp.width,naturalHeight:tmp.height}),r);
+}
+async function removeCard(c){
+  try{ await db.collection("cardPhotos").doc(c.id).delete(); }catch(e){}
+  try{ await db.collection("cards").doc(c.id).delete(); }catch(e){}
+  c.local=false; if(c.el) c.el.remove(); CARDS.delete(c.id); renderList();
+}
+async function addExtraCard(base,f,photo){
+  const id=db.collection("cards").doc().id, now=new Date().toISOString(), who=USER.email;
+  const data={ocr:"done",raw:f.raw||"",staffOk:false,evaOk:false,exported:false,source:base.data.source||"",by:(USER.displayName||who),byEmail:who,at:now};
+  FIELDS.forEach(k=>{ if(!(k in data)) data[k]=f[k]||""; }); if(!data.country) data.country=base.data.country||"";
+  const c={id,data,local:true,status:"done",prog:1,rot:0,photoLoaded:true,frontSrc:photo}; CARDS.set(id,c); renderList();
+  try{ await db.collection("cardPhotos").doc(id).set({front:photo,byEmail:who,at:now}); await db.collection("cards").doc(id).set(data); }
+  catch(e){ $("#g-msg").textContent=t("saveErr")+(e.code||e.message); }
 }
 async function runQueue(){
   if(busy) return; busy=true;
   while(queue.length){
     const job=queue.shift(), c=job.card; current=null; c.prog=0; c.note="";
+    if(!CARDS.has(c.id)) continue;
     let parsed=null, text="";
     if(window.geminiRead){
       try{ c.status="ai"; paint(c);
-        const imgs=job.side==="back"?[c.frontSrc,c.backSrc].filter(Boolean):[c.frontSrc];
-        const r=await window.geminiRead(imgs); parsed=cleanAI(r); text=String(r.raw||"").trim(); }
+        const back=job.side==="back", imgs=back?[c.frontSrc,c.backSrc].filter(Boolean):[c.frontSrc];
+        const r=await window.geminiRead(imgs,back);
+        let found=(Array.isArray(r.cards)?r.cards:[r]).map(x=>({f:fixAI(x),box:x.box,rot:x.rotation})).filter(x=>x.f.email||x.f.lastName||x.f.firstName||x.f.mobile);
+        if(!found.length) throw new Error(t("noCard"));
+        if(!back&&!job.single){
+          const keep=[]; let dups=0;
+          for(const x of found){ const k=cardKey(x.f); if(isDupCard(x.f,c.id)||(k&&keep.some(y=>cardKey(y.f)===k))){dups++;continue;} keep.push(x); }
+          if(!keep.length){ toast(t("dupSkipped")(dups)); c.status="done"; await removeCard(c); continue; }
+          if(found.length>1||dups) toast(t("multiFound")(found.length,keep.length));
+          const orig=c.frontSrc;
+          for(const x of keep.slice(1)){ const ph=(await cropCard(orig,x.box,x.rot))||orig; await addExtraCard(c,x.f,ph); }
+          found=[keep[0]];
+          const ph=await cropCard(orig,keep[0].box,keep[0].rot);
+          if(ph){ c.frontSrc=ph; c.img=null; c.rot=0; paint(c); db.collection("cardPhotos").doc(c.id).set({front:ph},{merge:true}).catch(()=>{}); }
+        }
+        parsed=found[0].f; text=parsed.raw||""; }
       catch(e){ console.warn("Gemini:",e); c.note=t("aiFallback")+" ("+String((e&&(e.code||e.message))||e).slice(0,90)+")"; parsed=null; }
     } else if(window.geminiError){ c.note=t("aiFallback")+" ("+window.geminiError+")"; }
     if(!parsed){
@@ -426,7 +494,7 @@ async function rotate(c){
   let im=c.img; if(!im){ await loadPhoto(c); if(!c.frontSrc) return; im=c.img=await srcToImage(c.frontSrc); c.baseSrc=c.frontSrc; }
   c.frontSrc=toJpeg(im,c.rot); paint(c);
   try{ await db.collection("cardPhotos").doc(c.id).set({front:c.frontSrc},{merge:true}); }catch(e){}
-  c.touched={}; enqueue({card:c,img:im,rot:c.rot,side:"front"});
+  c.touched={}; enqueue({card:c,img:im,rot:c.rot,side:"front",single:true});
 }
 
 /* ---------- render ---------- */
@@ -571,20 +639,31 @@ try{
   if(RECAPTCHA_SITE_KEY){ const {initializeAppCheck,ReCaptchaV3Provider}=await import(B+"firebase-app-check.js");
     initializeAppCheck(app,{provider:new ReCaptchaV3Provider(RECAPTCHA_SITE_KEY),isTokenAutoRefreshEnabled:true}); }
   const ai=getAI(app,{backend:new GoogleAIBackend()});
-  const F=["firstName","lastName","jobTitle","company","email","mobile","phone","website","address","city","country","raw"];
-  const schema={type:"object",properties:Object.fromEntries(F.map(k=>[k,{type:"string"}])),required:F};
-  const PROMPT=`You read business cards, mostly from Turkish companies (Turkish and/or English text; there may be a front and a back photo of the same card).
-Return one JSON object for the person on the card:
-- firstName: all given names (Turkish cards often have two), lastName: family name. Write names in normal case (e.g. "Mehmet Ali", "Yılmaz"), not ALL CAPS. Keep Turkish letters (ç ğ ı İ ö ş ü).
-- jobTitle: as written on the card (prefer the English one if both exist).
-- company: the full legal company name as printed (e.g. "... San. ve Tic. A.Ş."); if only a brand/logo text is visible, use that.
-- email, website (no http://).
-- mobile: mobile/GSM/Cep number; phone: landline/Tel number. Never use the fax number. Write Turkish numbers as +90 XXX XXX XX XX.
-- address: street address without city and country; city: the province (İl), e.g. İstanbul, Bursa; country: country name in English (Turkey if Turkish address).
-- raw: every piece of text on the card(s), line by line.
-Use "" for anything not on the card. Do not guess or invent anything.`;
-  window.geminiRead=async(dataUrls)=>{
-    const parts=[{text:PROMPT}, ...dataUrls.map(u=>({inlineData:{mimeType:"image/jpeg",data:u.split(",")[1]}}))];
+  const F=["firstName","lastName","jobTitle","company","email","mobile","phone","otherPhones","fax","website","address","city","country","other","raw"];
+  const one={type:"object",properties:{...Object.fromEntries(F.map(k=>[k,{type:"string"}])),
+    box:{type:"array",items:{type:"integer"},description:"[ymin,xmin,ymax,xmax] of this card in the photo, 0-1000"},
+    rotation:{type:"integer",description:"clockwise degrees (0,90,180,270) to turn the card so its text is upright"}},required:[...F,"box","rotation"]};
+  const schema={type:"object",properties:{cards:{type:"array",items:one}},required:["cards"]};
+  const PROMPT=`You read business cards photographed by trade-office staff at fairs in Türkiye. Most cards are Turkish companies; text may be Turkish, English or both.
+
+WHICH CARDS
+- One photo often shows several cards lying on a table. Return one entry in "cards" for EVERY card whose name AND at least one contact detail are fully visible.
+- Skip cards that are cut off at the photo edge, hidden under another card, or too blurred to read. Never mix lines from two different cards.
+- For each card give "box" = [ymin,xmin,ymax,xmax] (0-1000, relative to the photo) and "rotation" = clockwise degrees needed to make its text upright (cards are sometimes photographed sideways).
+
+FIELDS (use "" when not on the card; never guess or invent)
+- firstName = all given names ("Murat George", "Mehmet Ali"); lastName = family name. Turkish cards often print the surname in CAPITALS: write it in normal case using Turkish rules (İMİR → İmir, KILINÇEL → Kılınçel, ŞAHİN → Şahin, DEREBAĞ → Derebağ). Keep ç ğ ı İ ö ş ü.
+- jobTitle exactly as printed (Turkish titles stay Turkish, e.g. "Kurucu Ortak", "Firma Yetkilisi").
+- company = the legal company name if printed ("... Ltd. Şti.", "... San. ve Tic. A.Ş.", "... LTD."), even when it is small, vertical, or under the logo; otherwise the brand name in the logo. If the card shows two brands, take the one that matches the e-mail domain and put the other brand in "other".
+- email: copy carefully, letter by letter. website: without http://; if several, the one matching the e-mail domain first.
+- Phones: write Turkish numbers as +90 XXX XXX XX XX (0532… or 0212.481… → +90 532 …, +90 212 …). mobile = GSM/Cep/mobile icon, or any Turkish number starting with 5 (e.g. +90 5xx). phone = Tel/landline/PBX (Turkish numbers starting with 2, 3 or 4). Extra numbers → otherPhones. Fax (Fax, F:, Faks, printer icon) → fax only. Drop notes like "(pbx)", "(4 hat)". A tax number ("VD", "Vergi Dairesi") is NOT a phone.
+- address = the street address of the Turkish head office (the first/main one if several offices are listed), without city and country, postal code included. Other offices → "other".
+- city = the province (İl): districts and neighbourhoods such as Esenler, Merter, Üsküdar, Kartal, Sarıyer, Ümraniye, Maslak, Arnavutköy belong to İstanbul; "İST." means İstanbul. country in English ("Turkey" for Türkiye).
+- other = anything useful that has no field (second brand, other offices, products, tax office).
+- raw = all text of that card, line by line.`;
+  const BACK=`\n\nThe photos are the FRONT and the BACK of ONE card: return exactly one entry in "cards" combining both sides (box [0,0,1000,1000], rotation 0).`;
+  window.geminiRead=async(dataUrls,back)=>{
+    const parts=[{text:PROMPT+(back?BACK:"")}, ...dataUrls.map(u=>({inlineData:{mimeType:"image/jpeg",data:u.split(",")[1]}}))];
     let last;
     for(const m of GEMINI_MODELS){
       try{
