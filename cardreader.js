@@ -2,7 +2,7 @@
 // Gemini (Firebase AI Logic, project buyer-c7221) reads the photo and returns every fully visible card;
 // fixCard() then applies rules learned from real Turkish fair cards. Exposes window.CardReader.
 const FIREBASE_CONFIG={apiKey:"AIzaSyDCm-mdbt8zoA5sTk84OsTA8EHR337mmyI",authDomain:"buyer-c7221.firebaseapp.com",projectId:"buyer-c7221",storageBucket:"buyer-c7221.firebasestorage.app",messagingSenderId:"69344593670",appId:"1:69344593670:web:8bcc15ab876ee062e48087"};
-// reCAPTCHA v3 SITE key (public) for Firebase App Check. The secret key belongs only in the Firebase console.
+// Fraud Defense (reCAPTCHA Enterprise) SITE key (public) for Firebase App Check — must be the key registered in Firebase > App Check.
 const RECAPTCHA_SITE_KEY="6Lfs2C8uAAAAAK7mqkzGVxOqQD6NxuUd_nFHBTxa";
 const GEMINI_MODELS=["gemini-3.6-flash","gemini-3.5-flash-lite","gemini-2.5-flash"];
 const V="13.4.0", B=`https://www.gstatic.com/firebasejs/${V}/`;
@@ -62,8 +62,9 @@ function init(){
     const {initializeApp}=await import(B+"firebase-app.js");
     const {getAI,getGenerativeModel,GoogleAIBackend}=await import(B+"firebase-ai.js");
     const app=initializeApp(FIREBASE_CONFIG,"cardreader");
-    if(RECAPTCHA_SITE_KEY){ const {initializeAppCheck,ReCaptchaV3Provider}=await import(B+"firebase-app-check.js");
-      initializeAppCheck(app,{provider:new ReCaptchaV3Provider(RECAPTCHA_SITE_KEY),isTokenAutoRefreshEnabled:true}); }
+    if(RECAPTCHA_SITE_KEY){ const {initializeAppCheck,ReCaptchaEnterpriseProvider}=await import(B+"firebase-app-check.js");
+      // The web app is registered in App Check with Fraud Defense (reCAPTCHA Enterprise); classic reCAPTCHA v3 is retired.
+      initializeAppCheck(app,{provider:new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY),isTokenAutoRefreshEnabled:true}); }
     return {ai:getAI(app,{backend:new GoogleAIBackend()}),getGenerativeModel};
   })();
   ready.catch(()=>{ ready=null; });
