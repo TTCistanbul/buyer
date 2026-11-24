@@ -1090,16 +1090,19 @@ const GRADE_EN={HIGH:'High',MEDIUM:'Medium',NORMAL:'Normal',IMPORTER:'Importer',
 async function saveHubSpot(list,owner,show,statusEl,ownerEl){
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(owner)){ statusEl.textContent=T('Contact Owner olarak kendi e-postanı yaz','Type your own email as Contact Owner'); ownerEl.focus(); return; }
   if(!list.length){ statusEl.textContent=T('İndirilecek firma yok; önce firmaları işaretle','No companies to download; tick some first'); return; }
-  const head=['First Name','Last Name','Email','Phone Number','Mobile Phone Number','Job Title','Company Name','Company Domain Name','Website URL','Street Address','City','Country/Region','Contact Owner','Card Source','Taiwan Show','Grade','Taiwanese Brands','Lead Origin','Check Notes'];
-  const rows=[head,...list.map(x=>{
+  const head=['First Name','Last Name','Email','Phone Number','Mobile Phone Number','Job Title','Company Name','Company Domain Name','Website URL','Street Address','City','Country/Region','Contact Owner','Card Source','Taiwan Show','Grade','Taiwanese Brands','Lead Origin','HubSpot Check','Check Notes'];
+  // HubSpot finds duplicates only by Email (contacts) and Company Domain Name (companies); rows without them need a manual search first.
+  let risky=0;
+  const rows=[head,...list.map(x=>{ const dom=domainOf(x), hs=[];
+    if(!x.email) hs.push('NO EMAIL - contact may be duplicated'); if(!dom) hs.push('NO DOMAIN - company may be duplicated'); if(hs.length) risky++;
     const n=String(x.contact||'').trim().split(/\s+/).filter(Boolean); const last=n.length>1?n.pop():''; const first=n.join(' ');
     const notes=[]; if(!x.contact) notes.push('no name'); if(!x.email) notes.push('no email'); if(!x.title) notes.push('no job title'); if(!x.city) notes.push('no city'); if(!x.grade) notes.push('not graded');
-    return [first,last,x.email,x.phone,x.mobile||'',x.title||'',x.company,domainOf(x),x.web,x.address||'',x.city||'',(!x.country||isTR(x.country))?'Turkey':x.country,owner,x.source,show,GRADE_EN[x.grade]||x.grade||'',(x.tb||[]).join(', '),x.origin==='scan'?'List scan':'Found by office',notes.join('; ')];
+    return [first,last,x.email,x.phone,x.mobile||'',x.title||'',x.company,domainOf(x),x.web,x.address||'',x.city||'',(!x.country||isTR(x.country))?'Turkey':x.country,owner,x.source,show,GRADE_EN[x.grade]||x.grade||'',(x.tb||[]).join(', '),x.origin==='scan'?'List scan':'Found by office',hs.length?'SEARCH HUBSPOT FIRST: '+hs.join('; '):'OK',notes.join('; ')];
   })];
   const csv='﻿'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n');
   const name=('hubspot_'+(show||'list')).replace(/[^\w\-]+/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.csv';
   if(!downloads){ statusEl.textContent=T('Bu görünümde indirme yapılamıyor','Downloads unavailable here'); return; }
-  try{ await downloads.save({filename:name,data:new Blob([csv],{type:'text/csv;charset=utf-8'})}); statusEl.textContent=T(`İndirildi: ${name} (${list.length} firma)`,`Saved: ${name} (${list.length} companies)`); }
+  try{ await downloads.save({filename:name,data:new Blob([csv],{type:'text/csv;charset=utf-8'})}); statusEl.textContent=T(`İndirildi: ${name} (${list.length} firma)`,`Saved: ${name} (${list.length} companies)`)+(risky?T(` · ⚠ ${risky} satırda e-posta veya alan adı yok: HubSpot bunların tekrar olup olmadığını anlayamaz. Yüklemeden önce bu firmaları HubSpot'ta ara (“HubSpot Check” sütunu).`,` · ⚠ ${risky} rows have no email or domain, so HubSpot cannot spot duplicates. Search these companies in HubSpot before importing (“HubSpot Check” column).`):''); }
   catch(e){ statusEl.textContent=T('İndirme iptal edildi','Download not saved'); }
 }
 $('#b-share').addEventListener('click',()=>{

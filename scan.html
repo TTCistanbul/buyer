@@ -199,6 +199,7 @@ const FIELDS=["firstName","lastName","jobTitle","company","email","mobile","phon
 const KEYF=["firstName","lastName","email","company"];
 let lang=(()=>{try{return localStorage.getItem("cardLang")||"tr"}catch(e){return "tr"}})();
 const t=k=>T[lang][k];
+const T_={tr:{hsRisky:n=>`⚠ ${n} kartta e-posta veya firma alan adı yok: HubSpot bunların tekrar olup olmadığını anlayamaz. Yüklemeden önce HubSpot'ta ara (CSV'de “HubSpot Check” sütunu).`},zh:{hsRisky:n=>`⚠ 有 ${n} 張名片沒有 email 或公司網域，HubSpot 無法判斷是否重複。匯入前請先在 HubSpot 搜尋（CSV 的「HubSpot Check」欄）。`}};
 
 /* ---------- text helpers ---------- */
 const fold=s=>(s||"").toLocaleLowerCase("tr").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/ı/g,"i");
@@ -523,7 +524,7 @@ function progress(c){ if(!c.el) return; const b=c.el.querySelector(".bar"); b.st
   const st={loading:t("loadingModel"),reading:t("reading")}[c.status]; if(st) c.el.querySelector(".status").textContent=st+(c.prog?` ${Math.round(c.prog*100)}%`:""); }
 function head(c){ if(!c.el) return; const d=c.data; const nm=[d.firstName,d.lastName].filter(Boolean).join(" ")||"—";
   c.el.querySelector(".cname").textContent=nm+(d.company?" · "+d.company:"");
-  c.el.querySelector(".meta").textContent=T[lang].added(d.by||d.byEmail||"",fmt(d.at))+(d.source?" · "+d.source:"");
+  c.el.querySelector(".meta").textContent=T[lang].added(d.by||d.byEmail||"",fmt(d.at))+(d.source?" · "+d.source:"")+((!d.email||!domainOf(d))&&d.ocr==="done"?(lang==="tr"?" · ⚠ HubSpot'ta önce ara":" · ⚠ 匯入前先在 HubSpot 搜尋"):"");
   const b=c.el.querySelector(".state"); const s=stateOf(d); const dup=d.email&&!d.exported&&dupEmails()[d.email.toLowerCase()]>1;
   b.className="badge state"+(dup?" dup":{new:"",checked:" blue",approved:" ok",exported:" grey"}[s]);
   b.textContent=dup?t("stDup"):t({new:"stNew",checked:"stChecked",approved:"stApproved",exported:"stExported"}[s]); }
@@ -537,21 +538,24 @@ function ask(msg){return new Promise(res=>{const w=document.createElement("div")
   w.addEventListener("click",e=>{const v=e.target.dataset&&e.target.dataset.v;if(v!==undefined){w.remove();res(v==="1");}});document.body.appendChild(w);});}
 
 /* ---------- export ---------- */
-const COLS=["First Name","Last Name","Email","Phone Number","Mobile Phone Number","Job Title","Company Name","Company Domain Name","Website URL","Street Address","City","Country/Region","Contact Owner","Card Source","Check Notes"];
+const COLS=["First Name","Last Name","Email","Phone Number","Mobile Phone Number","Job Title","Company Name","Company Domain Name","Website URL","Street Address","City","Country/Region","Contact Owner","Card Source","HubSpot Check","Check Notes"];
 const csvCell=v=>{v=(v==null?"":String(v));return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
 async function doExport(){
   const list=sorted().filter(c=>inFilter(c.data)&&c.data.evaOk);
   if(!list.length){ toast(t("noApproved")); return; }
   const owner=$("#s-owner").value.trim(), dups=dupEmails();
-  const rows=[COLS];
-  list.forEach(c=>{ const f=c.data, notes=[];
+  const rows=[COLS]; let risky=0;
+  // HubSpot finds duplicates only by Email (contacts) and Company Domain Name (companies)
+  list.forEach(c=>{ const f=c.data, notes=[], hs=[];
+    if(!f.email) hs.push("NO EMAIL - contact may be duplicated"); if(!domainOf(f)) hs.push("NO DOMAIN - company may be duplicated"); if(hs.length) risky++;
     if(!f.email)notes.push("no email"); if(!f.firstName&&!f.lastName)notes.push("no name"); if(!f.company)notes.push("no company");
     if(f.email&&dups[f.email.toLowerCase()]>1)notes.push("duplicate email"); if(f.exported)notes.push("already exported "+String(f.exportedAt||"").slice(0,10));
-    rows.push([f.firstName,f.lastName,f.email,f.phone,f.mobile,f.jobTitle,f.company,domainOf(f),f.website,f.address,f.city,f.country||$("#s-country").value.trim(),owner,f.source,notes.join("; ")]); });
+    rows.push([f.firstName,f.lastName,f.email,f.phone,f.mobile,f.jobTitle,f.company,domainOf(f),f.website,f.address,f.city,f.country||$("#s-country").value.trim(),owner,f.source,hs.length?"SEARCH HUBSPOT FIRST: "+hs.join("; "):"OK",notes.join("; ")]); });
   const csv="﻿"+rows.map(r=>r.map(csvCell).join(",")).join("\r\n");
   const d=new Date(),p=n=>String(n).padStart(2,"0");
   const name=`hubspot_kartvizit_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}.csv`;
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);
+  $("#g-msg").textContent=risky?T_[lang].hsRisky(risky):"";
   const fresh=list.filter(c=>!c.data.exported);
   if(fresh.length&&await ask(T[lang].markExported(fresh.length))){
     const now=new Date().toISOString(); const batch=db.batch();
