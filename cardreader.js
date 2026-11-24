@@ -3,7 +3,7 @@
 // fixCard() then applies rules learned from real Turkish fair cards. Exposes window.CardReader.
 const FIREBASE_CONFIG={apiKey:"AIzaSyDCm-mdbt8zoA5sTk84OsTA8EHR337mmyI",authDomain:"buyer-c7221.firebaseapp.com",projectId:"buyer-c7221",storageBucket:"buyer-c7221.firebasestorage.app",messagingSenderId:"69344593670",appId:"1:69344593670:web:8bcc15ab876ee062e48087"};
 // Fraud Defense (reCAPTCHA Enterprise) SITE key (public) for Firebase App Check — must be the key registered in Firebase > App Check.
-const RECAPTCHA_SITE_KEY="6Lfs2C8uAAAAAK7mqkzGVxOqQD6NxuUd_nFHBTxa";
+const RECAPTCHA_SITE_KEY="6Lc_NTAuAAAAAPUrYJZnuUotdzX5M3IQ1QeGCf1T";
 const GEMINI_MODELS=["gemini-3.6-flash","gemini-3.5-flash-lite","gemini-2.5-flash"];
 const V="13.4.0", B=`https://www.gstatic.com/firebasejs/${V}/`;
 
