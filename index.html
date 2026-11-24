@@ -373,6 +373,7 @@ Tayvan Ticaret Merkezi İstanbul (TAITRA)
 </section>
 </div>
 
+<script type="module" src="cardreader.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 /* ===== Language (TR / EN): one language at a time, remembered on this browser ===== */
@@ -976,7 +977,7 @@ $('#l-grade').addEventListener('click',()=>{
   $('#b-map').scrollIntoView({behavior:'smooth',block:'start'});
 });
 renderLocal(); setWhere();
-/* ---- business card photos: read in this browser with Tesseract.js (nothing is uploaded) ---- */
+/* ---- business card photos: Gemini via cardreader.js; Tesseract.js in this browser as fallback ---- */
 const TESS_SRC='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
 let tessWorker=null;
 async function getOCR(){
@@ -1031,6 +1032,17 @@ function parseCard(text,lines){
   if(ni!=null){ v.contact=L[ni].t.split(' ').map(x=>x===x.toUpperCase()&&x.length>2?x[0]+x.slice(1).toLocaleLowerCase('tr'):x).join(' '); used.add(ni); }
   return v;
 }
+// Gemini first (shared cardreader.js, same rules as scan.html); Tesseract only if Gemini is unavailable.
+const toBuyer=f=>({company:f.company||'',contact:[f.firstName,f.lastName].filter(Boolean).join(' '),title:f.jobTitle||'',email:f.email||'',phone:f.phone||'',mobile:f.mobile||'',web:f.website||'',address:f.address||'',city:f.city||'',country:f.country||'Türkiye',info:''});
+let aiNote='';
+async function readCards(file){
+  if(window.CardReader){
+    try{ const img=await CardReader.fileToJpeg(file); const found=await CardReader.read([img],{country:'Türkiye'});
+      aiNote=''; return found.map(x=>toBuyer(x.f)); }
+    catch(e){ aiNote=String((e&&(e.code||e.message))||e).slice(0,80); console.warn('Gemini:',e); }
+  } else aiNote='Gemini';
+  await getOCR(); return [await readCardLocal(file)];
+}
 async function readCardLocal(file){
   const w=await getOCR();
   const {data}=await w.recognize(file);
@@ -1043,22 +1055,25 @@ $('#ff-photo').addEventListener('change',async e=>{
   if(!files.length) return;
   $('#ff-photo-btn').disabled=true;
   try{
-    $('#f-status').textContent=T('Kartvizit okuyucu hazırlanıyor… (ilk seferde biraz sürer)','Getting the card reader ready… (slower the first time)');
-    await getOCR();
-    if(files.length===1){
-      $('#f-status').textContent=T('Kartvizit okunuyor…','Reading the card…');
-      const r=await readCardLocal(files[0]); resetForm(); fillForm(r);
-      $('#f-status').textContent=T('Kartvizit okundu. Alanları kontrol et, sonra “Listeye ekle”.','Card read. Check the fields, then “Add to the list”.');
+    const fb=()=>aiNote?T(` (Gemini kullanılamadı, basit okuyucu kullanıldı: ${aiNote})`,` (Gemini unavailable, basic reader used: ${aiNote})`):'';
+    $('#f-status').textContent=T('Kartvizit okunuyor…','Reading the card…');
+    let single=null;
+    if(files.length===1){ single=await readCards(files[0]); }
+    if(single&&single.length<=1){
+      resetForm(); if(single[0]) fillForm(single[0]);
+      $('#f-status').textContent=(single[0]?T('Kartvizit okundu. Alanları kontrol et, sonra “Listeye ekle”.','Card read. Check the fields, then “Add to the list”.'):T('Fotoğrafta kart bulunamadı.','No card found in the photo.'))+fb();
       $('#f-form').scrollIntoView({behavior:'smooth',block:'start'});
     } else {
       if(!curShow()){ $('#f-status').textContent=T('Önce yukarıdan hedef Tayvan fuarını seç.','Choose the target Taiwan show at the top first.'); $('#b-show').focus(); return; }
       const src=(($('#f-src').value.trim()||'')+' (kartvizit)').trim().slice(0,200);
       let ok=0, fail=0, dup=0, n=0;
       for(const f of files){
-        try{ const v=await readCardLocal(f); if(!v.company){ fail++; } else { v.source=src; v.country='Türkiye'; if(curShow()) v.shows=[curShow()]; if(addLocal(v)) ok++; else dup++; saveLocal(); renderLocal(); } }catch(err){ fail++; }
+        try{ const vs=single||await readCards(f); single=null; if(!vs.length) fail++;
+          for(const v of vs){ if(!v.company){ fail++; continue; } v.source=src; v.country=v.country||'Türkiye'; if(curShow()) v.shows=[curShow()]; if(addLocal(v)) ok++; else dup++; }
+          saveLocal(); renderLocal(); }catch(err){ fail++; }
         n++; $('#f-status').textContent=T(`Kartvizitler okunuyor… ${n}/${files.length}`,`Reading cards… ${n}/${files.length}`);
       }
-      $('#f-status').textContent=T(`${ok} kartvizit eklendi${dup?`, ${dup} zaten vardı`:''}${fail?`, ${fail} okunamadı`:''}. ✎ ile kontrol et.`,`${ok} cards added${dup?`, ${dup} already listed`:''}${fail?`, ${fail} unreadable`:''}. Check them with ✎.`);
+      $('#f-status').textContent=T(`${ok} kartvizit eklendi${dup?`, ${dup} zaten vardı`:''}${fail?`, ${fail} okunamadı`:''}. ✎ ile kontrol et.`,`${ok} cards added${dup?`, ${dup} already listed`:''}${fail?`, ${fail} unreadable`:''}. Check them with ✎.`)+fb();
     }
   }catch(err){ $('#f-status').textContent=T('Kartvizit okuyucu yüklenemedi; internet bağlantısını kontrol et.','The card reader could not load; check the internet connection.'); }
   finally{ $('#ff-photo-btn').disabled=false; }
