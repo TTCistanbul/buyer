@@ -259,7 +259,7 @@ button{border-radius:999px}
   </fieldset>
     <div class="btns" style="align-items:center"><label for="l-filter" style="margin:0"><span data-l="tr">Fuara göre göster</span><span data-l="en">Show by trade show</span></label><select id="l-filter" style="width:auto;padding:5px 8px"></select><button id="l-backfill" type="button" hidden style="font-size:12px"></button></div>
     <div class="tbl" style="max-height:360px"><table id="l-tbl"></table></div>
-    <div class="btns"><button class="primary" id="l-grade"><span data-l="tr">Bu listeyi puanla</span><span data-l="en">Grade this list</span></button><button id="l-clear"><span data-l="tr">Listeyi temizle</span><span data-l="en">Clear the list</span></button></div>
+    <div class="btns"><button class="primary" id="l-grade"><span data-l="tr">Bu listeyi puanla</span><span data-l="en">Grade this list</span></button><button id="l-export"><span data-l="tr">⬇ Bu listeyi Excel indir</span><span data-l="en">⬇ Download this list (Excel)</span></button><button id="l-clear"><span data-l="tr">Listeyi temizle</span><span data-l="en">Clear the list</span></button></div>
     <div class="status" id="f-status" aria-live="polite"></div>
     </div>
   </details>
@@ -932,11 +932,22 @@ function renderFilter(){ const el=$('#l-filter'), cur=el.value, cnt={}; let none
 function renderLocal(){
   renderFilter(); const VI=viewIdx();
   $('#l-count').textContent=LOCAL.length?T(`(${LOCAL.length} firma)`,`(${LOCAL.length} companies)`):'';
-  $('#l-grade').disabled=!LOCAL.length; $('#l-clear').disabled=!LOCAL.length;
+  $('#l-grade').disabled=!LOCAL.length; $('#l-clear').disabled=!LOCAL.length; $('#l-export').disabled=!VI.length;
   $('#l-tbl').innerHTML=`<tr><th>${T('Firma','Company')}</th><th>${T('Yetkili','Contact')}</th><th>${T('Görevi','Job title')}</th><th>${T('E-posta','Email')}</th><th>${T('Telefon','Phone')}</th><th>${T('Şehir','City')}</th><th>${T('Fuar','Show')}</th><th>${T('Kaynak','Source')}</th>${SHARED?`<th>${T('Ekleyen','Added by')}</th>`:''}<th></th></tr>`+
     (VI.length?VI.map(i=>[LOCAL[i],i]).map(([x,i])=>`<tr><td><b>${esc(x.company)}</b></td><td>${esc(x.contact)}</td><td>${esc(x.title)}</td><td>${esc(x.email)}</td><td>${esc(x.phone||x.mobile)}</td><td>${esc(x.city)}</td><td>${showsOf(x).length?esc(showsOf(x).join(', ')):(guessShows(x).length?`<span class="hint" title="${T('Kaynak listesinden tahmin','Guessed from the source list')}">${esc(guessShows(x).join(', '))} ?</span>`:'<span class="hint">—</span>')}</td><td><span class="hint">${srcList(x).length>1?`<b>${srcList(x).length} ${T('liste','lists')}</b>: `:''}${esc(x.source)}</span></td>${SHARED?`<td><span class="hint">${esc(x.by||'')}</span></td>`:''}<td style="white-space:nowrap"><button data-ledit="${i}" title="${T('Formda aç','Open in the form')}" style="padding:2px 8px">✎</button> <button data-ldel="${i}" title="${T('Sil','Delete')}" style="padding:2px 8px">×</button></td></tr>`).join('')
       :`<tr><td colspan="10" class="hint">${LOCAL.length?T('Bu fuar için firma yok.','No companies for this show.'):T('Henüz firma yok. Formu doldur veya kartvizit fotoğrafı seç.','No companies yet. Fill in the form or pick business card photos.')}</td></tr>`);
 }
+// Download the list as shown (respects "Fuara göre göster"), no grading needed
+$('#l-export').addEventListener('click',async()=>{
+  const VI=viewIdx(); if(!VI.length) return;
+  const head=[T('Firma','Company'),T('Yetkili','Contact'),T('Görevi','Job title'),T('E-posta','Email'),T('Telefon','Phone'),T('Cep','Mobile'),T('Web','Website'),T('Adres','Address'),T('Şehir','City'),T('Ülke','Country'),T('Ürünler / markalar','Products / brands'),T('Fuar','Show'),T('Kaynak','Source'),T('Puan','Grade'),T('Ekleyen','Added by'),T('Eklenme','Added on')];
+  const rows=VI.map(i=>LOCAL[i]).map(x=>[x.company||'',x.contact||'',x.title||'',x.email||'',x.phone||'',x.mobile||'',x.web||'',x.address||'',x.city||'',x.country||'',x.info||'',effShows(x).join(', '),x.source||'',x.grade||'',x.by||x.byEmail||'',String(x.at||'').slice(0,10)]);
+  const wb=XLSX.utils.book_new(); const ws=XLSX.utils.aoa_to_sheet([head,...rows]); ws['!cols']=head.map((h,k)=>({wch:[34,22,20,30,16,16,26,40,12,10,40,16,18,8,20,11][k]||14}));
+  XLSX.utils.book_append_sheet(wb,ws,T('Firmalar','Companies'));
+  const f=$('#l-filter').value; const name=('liste_'+(f||'tum')).replace(/[^\w\-]+/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.xlsx';
+  await downloads.save({filename:name,data:new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})});
+  $('#f-status').textContent=T(`İndirildi: ${name} (${rows.length} firma)`,`Saved: ${name} (${rows.length} companies)`);
+});
 $('#ff-cancel').addEventListener('click',e=>{ e.preventDefault(); resetForm(); });
 $('#ff-save').addEventListener('click',e=>{
   e.preventDefault();
