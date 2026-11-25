@@ -257,7 +257,7 @@ button{border-radius:999px}
     <p class="hint" id="ff-warn"></p>
     <div class="btns"><button class="primary" id="ff-save"><span data-l="tr">Listeye ekle</span><span data-l="en">Add to the list</span></button><button id="ff-cancel" hidden><span data-l="tr">Vazgeç</span><span data-l="en">Cancel</span></button></div>
   </fieldset>
-    <div class="btns" style="align-items:center"><label for="l-filter" style="margin:0"><span data-l="tr">Fuara göre göster</span><span data-l="en">Show by trade show</span></label><select id="l-filter" style="width:auto;padding:5px 8px"></select><button id="l-backfill" type="button" hidden style="font-size:12px"></button></div>
+    <div class="btns" style="align-items:center"><label for="l-filter" style="margin:0"><span data-l="tr">Fuara göre göster</span><span data-l="en">Show by trade show</span></label><select id="l-filter" style="width:auto;padding:5px 8px"></select><button id="l-backfill" type="button" hidden style="font-size:12px"></button><button id="l-fixurl" type="button" hidden style="font-size:12px"></button></div>
     <div class="tbl" style="max-height:360px"><table id="l-tbl"></table></div>
     <div class="btns"><button class="primary" id="l-grade"><span data-l="tr">Bu listeyi puanla</span><span data-l="en">Grade this list</span></button><button id="l-export"><span data-l="tr">⬇ Bu listeyi Excel indir</span><span data-l="en">⬇ Download this list (Excel)</span></button><button id="l-clear"><span data-l="tr">Listeyi temizle</span><span data-l="en">Clear the list</span></button></div>
     <div class="status" id="f-status" aria-live="polite"></div>
@@ -909,7 +909,16 @@ $('#s-reset').addEventListener('click',async()=>{ const em=$('#s-email').value.t
 $('#s-out').addEventListener('click',()=>firebase.auth().signOut());
 function fillForm(x){ for(const k of FF) $('#ff-'+k).value=(x[k]||''); }
 function resetForm(){ editIdx=null; editKey=null; fillForm({}); $('#f-legend').textContent=T('Firma ekle','Add a company'); $('#ff-cancel').hidden=true; $('#ff-warn').textContent=''; $('#ff-warn').dataset.ack=''; }
-function addLocal(v,fillOnly){ const i=findCo(v);
+// Some pasted member lists put "website<TAB>products" into the company column. Split it:
+// website -> web, products -> info, company name from the website (marked to check).
+const URLCO=/^\s*(https?:\/\/|www\.)\S+/i;
+function nameFromWeb(w){ let h=String(w||'').replace(/^\s*https?:\/\//i,'').replace(/^www\./i,'').split(/[\/?#\s]/)[0].toLowerCase();
+  h=h.replace(/\.(com|net|org|gen|biz|info|web|av|bel|edu|gov)?\.?(tr|eu|de|it|uk|us|co|io|aero|tech|tw)?$/,'').replace(/\.(com|net|org)$/,'');
+  const p=h.split('.').filter(Boolean); return (p[p.length-1]||h).toUpperCase(); }
+function fixUrlCompany(v){ if(!v||!URLCO.test(String(v.company||''))) return v;
+  const parts=String(v.company).split(/\t+/), url=parts[0].trim().replace(/\/+$/,''), rest=parts.slice(1).join(' ').trim();
+  return {...v,company:nameFromWeb(url),web:v.web||url,info:[rest,v.info].filter(Boolean).join(' · ').slice(0,300)}; }
+function addLocal(v,fillOnly){ v=fixUrlCompany(v); const i=findCo(v);
   if(i>=0){ const have=showsOf(LOCAL[i]), nw=showsOf(v).filter(s=>!have.includes(s)); v={...v}; if(nw.length){ v.shows=nw; LOCAL[i].shows=[...have,...nw]; } else delete v.shows; }
   if(i>=0&&v.source){ const have=srcList(LOCAL[i]); if(!have.some(s=>norm(s)===norm(v.source))) v={...v,source:[...have,v.source].join(SEP)}; else v={...v,source:''}; }
   if(i>=0){ const add=Object.fromEntries(Object.entries(v).filter(([k,x])=>x&&k!=='company'&&(k==='source'||!(fillOnly&&LOCAL[i][k]))));
@@ -928,7 +937,9 @@ function renderFilter(){ const el=$('#l-filter'), cur=el.value, cnt={}; let none
   el.innerHTML=`<option value="">${T('Tüm fuarlar','All shows')} (${LOCAL.length})</option>`+keys.map(k=>`<option value="${esc(k)}">${esc(k)} (${cnt[k]})</option>`).join('')+(none?`<option value="${NOSHOW}">${T('Fuarı belli değil','No show')} (${none})</option>`:'');
   el.value=[...el.options].some(o=>o.value===cur)?cur:'';
   const miss=LOCAL.filter(x=>!showsOf(x).length&&guessShows(x).length).length, bf=$('#l-backfill');
-  bf.hidden=!(SHARED&&AUTHU&&AUTHU.email===ADMIN&&miss); bf.textContent=T(`Eski ${miss} kayda tahmini fuarı kaydet`,`Save guessed show on ${miss} old records`); }
+  bf.hidden=!(SHARED&&AUTHU&&AUTHU.email===ADMIN&&miss); bf.textContent=T(`Eski ${miss} kayda tahmini fuarı kaydet`,`Save guessed show on ${miss} old records`);
+  const bad=LOCAL.filter(x=>URLCO.test(String(x.company||''))).length, fu=$('#l-fixurl');
+  fu.hidden=!(SHARED&&AUTHU&&AUTHU.email===ADMIN&&bad); fu.textContent=T(`🔧 Firma adı yerine web adresi olan ${bad} kaydı düzelt`,`🔧 Fix ${bad} records with a web address as company name`); }
 function renderLocal(){
   renderFilter(); const VI=viewIdx();
   $('#l-count').textContent=LOCAL.length?T(`(${LOCAL.length} firma)`,`(${LOCAL.length} companies)`):'';
@@ -971,6 +982,21 @@ $('#l-tbl').addEventListener('click',e=>{
 });
 $('#l-filter').addEventListener('change',renderLocal);
 document.addEventListener('click',e=>{ const a=e.target.closest('a[href="#how-ext"]'); if(!a) return; e.preventDefault(); const d=$('#how-ext'); d.open=true; d.scrollIntoView({behavior:'smooth',block:'start'}); });
+$('#l-fixurl').addEventListener('click',async()=>{ if(!SHARED||AUTHU.email!==ADMIN) return;
+  const todo=LOCAL.filter(x=>URLCO.test(String(x.company||''))); if(!todo.length) return;
+  if(!confirm(T(`${todo.length} kayıt düzeltilsin mi? Web adresi “Web sitesi”ne, ürünler “Ürünler”e taşınır; firma adı web adresinden alınır (kontrol et). Aynı web sitesi listede zaten varsa iki kayıt birleştirilir.`,`Fix ${todo.length} records? The web address moves to Website, products to Products; the company name is taken from the web address (check it). If the same website is already in the list, the two records are merged.`))) return;
+  let fixed=0, merged=0;
+  for(const x of todo){ const v=fixUrlCompany(x), d=domainOf(v);
+    const twin=d?LOCAL.find(y=>y!==x&&!URLCO.test(String(y.company||''))&&domainOf(y)===d):null;
+    try{
+      if(twin){ const add={}; for(const k of ['web','info','phone','mobile','email','address','city','contact','title']) if(v[k]&&!twin[k]) add[k]=v[k];
+        const sh=showsOf(x).filter(s=>!showsOf(twin).includes(s)); if(sh.length) add.shows=firebase.firestore.FieldValue.arrayUnion(...sh);
+        const src=srcList(x).filter(s=>!srcList(twin).some(t=>norm(t)===norm(s))); if(src.length) add.source=[...srcList(twin),...src].join(SEP);
+        if(Object.keys(add).length) await db.collection('buyers').doc(twin._id).set({...add,upBy:me(),upEmail:AUTHU.email,upAt:new Date().toISOString()},{merge:true});
+        await db.collection('buyers').doc(x._id).delete(); merged++; }
+      else { await db.collection('buyers').doc(x._id).set({company:v.company,web:v.web||'',info:v.info||'',upBy:me(),upEmail:AUTHU.email,upAt:new Date().toISOString()},{merge:true}); fixed++; }
+    }catch(e){ cloudErr(e); break; } }
+  $('#f-status').textContent=T(`${fixed} kayıt düzeltildi, ${merged} kayıt mevcut firmayla birleştirildi. Firma adlarını kontrol et.`,`${fixed} records fixed, ${merged} merged into an existing company. Check the company names.`); });
 $('#l-backfill').addEventListener('click',async()=>{ if(!SHARED||AUTHU.email!==ADMIN) return;
   const todo=LOCAL.filter(x=>!showsOf(x).length&&guessShows(x).length);
   if(!todo.length||!confirm(T(`${todo.length} eski kayda tahmini fuar kaydedilsin mi?`,`Save the guessed show on ${todo.length} old records?`))) return;
@@ -1104,7 +1130,7 @@ async function saveHubSpot(list,owner,show,statusEl,ownerEl){
   const head=['First Name','Last Name','Email','Phone Number','Mobile Phone Number','Job Title','Company Name','Company Domain Name','Website URL','Street Address','City','Country/Region','Contact Owner','Card Source','Taiwan Show','Grade','Taiwanese Brands','Lead Origin','HubSpot Check','Check Notes'];
   // HubSpot finds duplicates only by Email (contacts) and Company Domain Name (companies); rows without them need a manual search first.
   let risky=0;
-  const rows=[head,...list.map(x=>{ const dom=domainOf(x), hs=[];
+  const rows=[head,...list.map(x=>{ x=fixUrlCompany(x); const dom=domainOf(x), hs=[];
     if(!x.email) hs.push('NO EMAIL - contact may be duplicated'); if(!dom) hs.push('NO DOMAIN - company may be duplicated'); if(hs.length) risky++;
     const n=String(x.contact||'').trim().split(/\s+/).filter(Boolean); const last=n.length>1?n.pop():''; const first=n.join(' ');
     const notes=[]; if(!x.contact) notes.push('no name'); if(!x.email) notes.push('no email'); if(!x.title) notes.push('no job title'); if(!x.city) notes.push('no city'); if(!x.grade) notes.push('not graded');
